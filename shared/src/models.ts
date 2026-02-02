@@ -23,6 +23,7 @@ export interface TeamResult {
   teamName: string;
   score: number;
   isWinner: boolean;
+  players?: Player[];
 }
 
 export interface MapStats {

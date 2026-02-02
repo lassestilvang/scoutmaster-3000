@@ -1,5 +1,13 @@
-import { GridTeam, GridMatch, GridSeriesTeam, GridPlayer } from './gridClient.js';
+import { GridTeam, GridMatch, GridSeriesTeam, GridPlayer, GridSeries } from './gridClient.js';
 import { Team, Match, TeamResult, Player } from '@scoutmaster-3000/shared';
+
+/**
+ * Normalizes a raw GRID Series into a list of Match models.
+ */
+export function normalizeSeries(gridSeries: GridSeries): Match[] {
+  if (!gridSeries.matches) return [];
+  return gridSeries.matches.map(m => normalizeMatch(m, gridSeries.startTime));
+}
 
 /**
  * Normalizes a raw GRID Player into our domain Player model.
@@ -44,6 +52,7 @@ export function normalizeTeamResult(gst: GridSeriesTeam): TeamResult {
     teamName: gst.team.name,
     score: gst.score,
     isWinner: gst.win,
+    players: gst.players?.map(p => normalizePlayer(p, gst.team.id)),
   };
 }
 
