@@ -94,7 +94,10 @@ function App() {
               <h3 style={{ color: '#28a745' }}>🏆 How to Win</h3>
               <ul style={{ paddingLeft: '20px' }}>
                 {report.howToWin.map((tip, i) => (
-                  <li key={i} style={{ marginBottom: '10px', fontWeight: 'bold' }}>{tip}</li>
+                  <li key={i} style={{ marginBottom: '15px' }}>
+                    <div style={{ fontWeight: 'bold' }}>{tip.insight}</div>
+                    <div style={{ fontSize: '0.85rem', color: '#666', fontStyle: 'italic' }}>Evidence: {tip.evidence}</div>
+                  </li>
                 ))}
               </ul>
             </div>
