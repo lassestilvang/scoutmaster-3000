@@ -6,6 +6,7 @@ function App() {
   const [teamName, setTeamName] = useState('');
   const [report, setReport] = useState<ScoutingReport | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/health')
@@ -13,6 +14,12 @@ function App() {
       .then((data) => setHealth(data))
       .catch((err) => console.error('Error fetching health:', err));
   }, []);
+
+  const handleDownloadPdf = () => {
+    if (!report) return;
+    const teamNameEncoded = encodeURIComponent(report.opponentName);
+    window.location.href = `/api/scout/name/${teamNameEncoded}/pdf`;
+  };
 
   const handleScout = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,9 +80,29 @@ function App() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* 1. Team Snapshot */}
           <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ borderBottom: '2px solid #007bff', paddingBottom: '10px', marginTop: 0, color: '#333' }}>
-              Team Snapshot: {report.opponentName}
-            </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #007bff', paddingBottom: '10px', marginBottom: '10px' }}>
+              <h2 style={{ margin: 0, color: '#333' }}>
+                Team Snapshot: {report.opponentName}
+              </h2>
+              <button
+                onClick={handleDownloadPdf}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '4px',
+                  border: '1px solid #007bff',
+                  backgroundColor: 'white',
+                  color: '#007bff',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+              >
+                📥 Export PDF
+              </button>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '20px', marginTop: '20px' }}>
               <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
                 <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Win Probability</div>

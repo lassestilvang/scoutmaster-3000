@@ -5,6 +5,7 @@ import {
   generateScoutingReportByName, 
   generateScoutingReportById 
 } from './scoutingService.js';
+import { generatePdf } from './utils/pdfGenerator.js';
 
 dotenv.config();
 
@@ -43,6 +44,27 @@ app.get('/api/scout/:teamId', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/scout/:teamId/pdf
+ * Generates and downloads a PDF scouting report for a specific team ID.
+ */
+app.get('/api/scout/:teamId/pdf', async (req, res) => {
+  const { teamId } = req.params;
+  const limit = parseInt(req.query.limit as string) || 10;
+
+  try {
+    const report = await generateScoutingReportById(teamId, limit);
+    const pdfBuffer = await generatePdf(report);
+
+    res.contentType('application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="scouting-report-${teamId}.pdf"`);
+    res.send(Buffer.from(pdfBuffer));
+  } catch (error) {
+    console.error(`Error generating PDF for teamId ${teamId}:`, error);
+    res.status(500).json({ error: 'Failed to generate PDF report' });
+  }
+});
+
 app.post('/api/scout', async (req, res) => {
   const { teamName } = req.body;
   if (!teamName) {
@@ -55,6 +77,27 @@ app.post('/api/scout', async (req, res) => {
   } catch (error) {
     console.error('Error generating report:', error);
     res.status(500).json({ error: 'Failed to generate scouting report' });
+  }
+});
+
+/**
+ * GET /api/scout/name/:teamName/pdf
+ * Generates and downloads a PDF scouting report for a specific team name.
+ */
+app.get('/api/scout/name/:teamName/pdf', async (req, res) => {
+  const { teamName } = req.params;
+  const limit = parseInt(req.query.limit as string) || 10;
+
+  try {
+    const report = await generateScoutingReportByName(teamName, limit);
+    const pdfBuffer = await generatePdf(report);
+
+    res.contentType('application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="scouting-report-${teamName.replace(/\s+/g, '-')}.pdf"`);
+    res.send(Buffer.from(pdfBuffer));
+  } catch (error) {
+    console.error(`Error generating PDF for teamName ${teamName}:`, error);
+    res.status(500).json({ error: 'Failed to generate PDF report' });
   }
 });
 
