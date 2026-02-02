@@ -4,7 +4,11 @@ import { ScoutingReport, Match } from '@scoutmaster-3000/shared';
 import { 
   calculateWinRate, 
   generateScoutingInsights, 
-  generateHowToWin 
+  generateHowToWin,
+  calculateMapStats,
+  identifyRecentRoster,
+  calculateAggressionProfile,
+  calculateAverageScore
 } from './analysis/scoutingAnalysis.js';
 
 /**
@@ -24,12 +28,21 @@ async function generateReport(matches: Match[], teamRef: string, fallbackName: s
   const winProbability = calculateWinRate(matches, teamRef);
   const insights = generateScoutingInsights(matches, teamRef);
   const howToWin = generateHowToWin(matches, teamRef);
+  const topMaps = calculateMapStats(matches, teamRef);
+  const roster = identifyRecentRoster(matches, teamRef);
+  const aggression = calculateAggressionProfile(matches, teamRef);
+  const avgScore = calculateAverageScore(matches, teamRef);
 
   return {
     opponentName: actualName,
     winProbability,
     keyInsights: insights,
     howToWin: howToWin,
+    topMaps,
+    roster,
+    aggression,
+    avgScore,
+    matchesAnalyzed: matches.length,
   };
 }
 

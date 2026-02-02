@@ -26,6 +26,11 @@ export interface TeamResult {
   players?: Player[];
 }
 
+export interface StrategicInsight {
+  insight: string;
+  evidence: string;
+}
+
 export interface MapStats {
   mapName: string;
   matchesPlayed: number;

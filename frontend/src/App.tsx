@@ -70,39 +70,109 @@ function App() {
       </section>
 
       {report && (
-        <section style={{ backgroundColor: 'white', padding: '30px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #eee', paddingBottom: '10px' }}>
-            <h2 style={{ margin: 0 }}>Scouting Report: {report.opponentName}</h2>
-            <div style={{ textAlign: 'right' }}>
-              <span style={{ fontSize: '0.9rem', color: '#666' }}>Est. Win Probability</span>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: report.winProbability > 50 ? '#28a745' : '#dc3545' }}>
-                {report.winProbability}%
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* 1. Team Snapshot */}
+          <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+            <h2 style={{ borderBottom: '2px solid #007bff', paddingBottom: '10px', marginTop: 0, color: '#333' }}>
+              Team Snapshot: {report.opponentName}
+            </h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '20px', marginTop: '20px' }}>
+              <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Win Probability</div>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: report.winProbability > 50 ? '#28a745' : '#dc3545' }}>{report.winProbability}%</div>
+              </div>
+              <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Avg. Score</div>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{report.avgScore}</div>
+              </div>
+              <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Matches</div>
+                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{report.matchesAnalyzed}</div>
               </div>
             </div>
-          </div>
+          </section>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '30px' }}>
-            <div>
-              <h3 style={{ color: '#0056b3' }}>🔍 Key Insights</h3>
-              <ul style={{ paddingLeft: '20px' }}>
-                {report.keyInsights.map((insight, i) => (
-                  <li key={i} style={{ marginBottom: '10px' }}>{insight}</li>
-                ))}
-              </ul>
+          {/* 2. Key Tendencies */}
+          <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>📊 Key Tendencies</h3>
+            <div style={{ margin: '15px 0' }}>
+              <strong>Playstyle Aggression:</strong> <span style={{ 
+                marginLeft: '10px',
+                padding: '4px 12px', 
+                borderRadius: '20px', 
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                backgroundColor: report.aggression === 'High' ? '#f8d7da' : report.aggression === 'Medium' ? '#fff3cd' : '#d4edda',
+                color: report.aggression === 'High' ? '#721c24' : report.aggression === 'Medium' ? '#856404' : '#155724'
+              }}>{report.aggression}</span>
             </div>
-            <div>
-              <h3 style={{ color: '#28a745' }}>🏆 How to Win</h3>
-              <ul style={{ paddingLeft: '20px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
+                  <th style={{ padding: '12px 8px', color: '#666' }}>Map Name</th>
+                  <th style={{ padding: '12px 8px', color: '#666' }}>Played</th>
+                  <th style={{ padding: '12px 8px', color: '#666' }}>Win Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.topMaps.map((m, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #f1f1f1' }}>
+                    <td style={{ padding: '12px 8px', fontWeight: 'bold' }}>{m.mapName}</td>
+                    <td style={{ padding: '12px 8px' }}>{m.matchesPlayed}</td>
+                    <td style={{ padding: '12px 8px', color: m.winRate >= 0.5 ? '#28a745' : '#dc3545', fontWeight: 'bold' }}>
+                      {Math.round(m.winRate * 100)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            {/* 3. Player Watchlist */}
+            <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+              <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>👥 Player Watchlist</h3>
+              {report.roster.length > 0 ? (
+                <ul style={{ listStyle: 'none', padding: 0, marginTop: '15px' }}>
+                  {report.roster.map((p, i) => (
+                    <li key={i} style={{ 
+                      padding: '10px', 
+                      borderBottom: '1px solid #f9f9f9',
+                      display: 'flex',
+                      alignItems: 'center'
+                    }}>
+                      <span style={{ 
+                        width: '8px', 
+                        height: '8px', 
+                        backgroundColor: '#007bff', 
+                        borderRadius: '50%', 
+                        marginRight: '12px' 
+                      }}></span>
+                      <span style={{ fontWeight: '500' }}>{p.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p style={{ fontStyle: 'italic', color: '#666', marginTop: '15px' }}>No recent roster data available.</p>
+              )}
+            </section>
+
+            {/* 4. How to Win (Highlighted) */}
+            <section style={{ backgroundColor: '#007bff', color: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+              <h3 style={{ marginTop: 0, borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '10px' }}>🎯 How to Win</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '15px' }}>
                 {report.howToWin.map((tip, i) => (
-                  <li key={i} style={{ marginBottom: '15px' }}>
-                    <div style={{ fontWeight: 'bold' }}>{tip.insight}</div>
-                    <div style={{ fontSize: '0.85rem', color: '#666', fontStyle: 'italic' }}>Evidence: {tip.evidence}</div>
-                  </li>
+                  <div key={i} style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: '15px', borderRadius: '6px' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '1.05rem', marginBottom: '5px' }}>{tip.insight}</div>
+                    <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)', fontStyle: 'italic' }}>
+                      Evidence: {tip.evidence}
+                    </div>
+                  </div>
                 ))}
-              </ul>
-            </div>
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
       )}
 
       <footer style={{ marginTop: '50px', textAlign: 'center', fontSize: '0.8rem', color: '#999' }}>
