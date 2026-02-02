@@ -27,6 +27,7 @@ export interface GridSeries {
   id: string;
   startTime: string;
   teams: GridSeriesTeam[];
+  matches?: GridMatch[];
 }
 
 export interface GridMatch {
@@ -118,6 +119,33 @@ export class GridClient {
                   ]
                 },
               ],
+              matches: [
+                {
+                  id: 'mock-match-1',
+                  seriesId: 'mock-series-1',
+                  map: { name: 'Mirage' },
+                  teams: [
+                    { 
+                      team: { id: 't1', name: 'Team Alpha' }, 
+                      score: 16, 
+                      win: true,
+                      players: [
+                        { id: 'p1', name: 'Player One' },
+                        { id: 'p2', name: 'Player Two' },
+                      ]
+                    },
+                    { 
+                      team: { id: 't2', name: 'Team Beta' }, 
+                      score: 10, 
+                      win: false,
+                      players: [
+                        { id: 'p3', name: 'Player Three' },
+                        { id: 'p4', name: 'Player Four' },
+                      ]
+                    },
+                  ]
+                }
+              ]
             }
           }
         ]
@@ -165,6 +193,10 @@ export class GridClient {
                 }
                 score
                 win
+                players {
+                  id
+                  name
+                }
               }
               matches {
                 id
@@ -178,6 +210,10 @@ export class GridClient {
                   }
                   score
                   win
+                  players {
+                    id
+                    name
+                  }
                 }
               }
             }
@@ -205,6 +241,10 @@ export class GridClient {
                 }
                 score
                 win
+                players {
+                  id
+                  name
+                }
               }
               matches {
                 id
@@ -218,6 +258,10 @@ export class GridClient {
                   }
                   score
                   win
+                  players {
+                    id
+                    name
+                  }
                 }
               }
             }
