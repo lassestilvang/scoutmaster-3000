@@ -5,6 +5,7 @@
 ## 🚀 Key Features
 
 - **One-Click Analysis:** Enter a team name and get a complete strategic breakdown in seconds.
+- **Production-Ready API Client:** Includes built-in query caching and exponential backoff for maximum reliability and speed.
 - **Data-Driven Insights:** Automates the analysis of win rates, map performance, and playstyle aggression.
 - **"How to Win" Strategy:** A rule-based engine that identifies actionable opponent weaknesses and suggests counters.
 - **PDF Export:** High-quality, print-friendly reports for offline review or sharing with the team.
