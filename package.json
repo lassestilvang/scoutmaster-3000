@@ -1,0 +1,21 @@
+{
+  "name": "scoutmaster-3000",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "backend",
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w @scoutmaster-3000/backend\" \"npm run dev -w @scoutmaster-3000/frontend\"",
+    "build": "npm run build -w @scoutmaster-3000/shared && npm run build -w @scoutmaster-3000/backend && npm run build -w @scoutmaster-3000/frontend",
+    "start": "npm start -w @scoutmaster-3000/backend",
+    "install:all": "npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "typescript": "^5.5.3"
+  }
+}
