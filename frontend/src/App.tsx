@@ -4,6 +4,7 @@ import { ScoutingReport } from '@scoutmaster-3000/shared';
 function App() {
   const [health, setHealth] = useState<{ status: string; message: string } | null>(null);
   const [teamName, setTeamName] = useState('');
+  const [suggestions, setSuggestions] = useState<Array<{ id: string, name: string }>>([]);
   const [report, setReport] = useState<ScoutingReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -14,6 +15,22 @@ function App() {
       .then((data) => setHealth(data))
       .catch((err) => console.error('Error fetching health:', err));
   }, []);
+
+  useEffect(() => {
+    if (teamName.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      fetch(`/api/teams/search?q=${encodeURIComponent(teamName)}`)
+        .then((res) => res.json())
+        .then((data) => setSuggestions(data))
+        .catch((err) => console.error('Error fetching suggestions:', err));
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [teamName]);
 
   const handleDownloadPdf = () => {
     if (!report) return;
@@ -56,8 +73,14 @@ function App() {
             value={teamName}
             onChange={(e) => setTeamName(e.target.value)}
             placeholder="Enter opponent team name..."
+            list="team-suggestions"
             style={{ padding: '12px', width: '300px', borderRadius: '4px', border: '1px solid #ccc' }}
           />
+          <datalist id="team-suggestions">
+            {suggestions.map((s) => (
+              <option key={s.id} value={s.name} />
+            ))}
+          </datalist>
           <button
             type="submit"
             disabled={loading}

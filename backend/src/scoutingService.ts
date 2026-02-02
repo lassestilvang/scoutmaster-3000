@@ -52,7 +52,8 @@ export async function generateScoutingReportByName(teamName: string, limit: numb
     // 1. Find the team ID
     const teams = await gridGraphqlClient.findTeamsByName(teamName, 1);
     if (teams.length === 0) {
-      throw new Error(`Team "${teamName}" not found in GRID Central Data.`);
+      console.error(`Error generating scouting report from real data, falling back to mock: Team "${teamName}" not found in GRID Central Data.`);
+      return generateMockReport(teamName);
     }
 
     const teamId = teams[0].id;
@@ -114,6 +115,15 @@ function generateMockReport(teamName: string): ScoutingReport {
     matchesAnalyzed: 10,
     isMockData: true,
   };
+}
+
+export async function searchTeams(query: string): Promise<Array<{ id: string, name: string }>> {
+  try {
+    return await gridGraphqlClient.findTeamsByName(query, 10);
+  } catch (error) {
+    console.error('Error searching for teams:', error);
+    return [];
+  }
 }
 
 // Deprecated: use generateScoutingReportByName instead

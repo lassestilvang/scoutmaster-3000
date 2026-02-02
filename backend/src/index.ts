@@ -3,7 +3,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { 
   generateScoutingReportByName, 
-  generateScoutingReportById 
+  generateScoutingReportById,
+  searchTeams
 } from './scoutingService.js';
 import { generatePdf } from './utils/pdfGenerator.js';
 
@@ -17,6 +18,21 @@ app.use(express.json());
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'ScoutMaster 3000 API is running' });
+});
+
+app.get('/api/teams/search', async (req, res) => {
+  const { q } = req.query;
+  if (!q || typeof q !== 'string') {
+    return res.json([]);
+  }
+
+  try {
+    const teams = await searchTeams(q);
+    res.json(teams);
+  } catch (error) {
+    console.error('Error searching teams:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 /**
