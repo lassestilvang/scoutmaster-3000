@@ -14,8 +14,8 @@
 
 ScoutMaster 3000 leverages the **GRID GraphQL API** to power its scouting engine:
 
-1.  **Data Acquisition:** Fetches recent series and match data for a specific team using `allSeries` queries.
-2.  **Normalization:** A dedicated layer transforms raw GRID GraphQL responses into a normalized domain model.
+1.  **Data Acquisition:** Fetches series IDs from **Central Data** and detailed results from the **Series State API**.
+2.  **Normalization:** A dedicated layer transforms raw GRID GraphQL responses (series state and games) into a normalized domain model.
 3.  **Statistical Analysis:** Calculates pure metrics like win probability, average round scores, and map-specific win rates.
 4.  **Pattern Recognition:** Identifies the team's "Aggression Profile" based on scoring density and detects recent roster consistency.
 5.  **Strategic Generation:** A rule-based engine ranks candidate insights (e.g., "Force map X", "Counter high aggression") and selects the top 3-5 high-impact strategies.
