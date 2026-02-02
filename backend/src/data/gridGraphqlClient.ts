@@ -47,6 +47,7 @@ export interface GridSeriesTeamState {
 export interface GridSeriesState {
   id: string;
   finished: boolean;
+  startedAt?: string;
   teams: GridSeriesTeamState[];
   games: Array<{
     id: string;
@@ -54,6 +55,16 @@ export interface GridSeriesState {
       name: string;
     };
     teams: GridSeriesTeamState[];
+  }>;
+  draftActions?: Array<{
+    type: string;
+    drafter?: {
+      id: string;
+    };
+    draftable?: {
+      name: string;
+      type: string;
+    };
   }>;
 }
 
@@ -207,24 +218,28 @@ export class GridGraphqlClient {
   /**
    * Get recent series IDs for a team using Central Data
    */
-  async getRecentSeriesByTeam(teamId: string, limit: number = 10): Promise<string[]> {
+  async getRecentSeriesByTeam(teamId: string, limit: number = 10): Promise<Array<{ id: string; startTimeScheduled?: string }>> {
     const query = `
       query GetRecentSeries($teamId: ID!, $limit: Int!) {
         allSeries(filter: { teamId: $teamId }, first: $limit, orderBy: StartTimeScheduled, orderDirection: DESC) {
           edges {
             node {
               id
+              startTimeScheduled
             }
           }
         }
       }
     `;
-    const data = await this.executeQuery<{ allSeries: { edges: Array<{ node: { id: string } }> } }>(
+    const data = await this.executeQuery<{ allSeries: { edges: Array<{ node: { id: string, startTimeScheduled?: string } }> } }>(
       CENTRAL_DATA_ENDPOINT,
       query,
       { teamId, limit }
     );
-    return data.allSeries.edges.map(e => e.node.id);
+    return data.allSeries.edges.map(e => ({
+      id: e.node.id,
+      startTimeScheduled: e.node.startTimeScheduled
+    }));
   }
 
   /**
@@ -236,6 +251,7 @@ export class GridGraphqlClient {
         seriesState(id: $seriesId) {
           id
           finished
+          startedAt
           teams {
             id
             name
@@ -262,6 +278,16 @@ export class GridGraphqlClient {
               }
             }
           }
+          draftActions {
+            type
+            drafter {
+              id
+            }
+            draftable {
+              name
+              type
+            }
+          }
         }
       }
     `;
@@ -277,18 +303,23 @@ export class GridGraphqlClient {
    * Combined method to get full series details for a team
    */
   async getFullSeriesByTeam(teamId: string, limit: number = 10): Promise<GridSeriesState[]> {
-    const seriesIds = await this.getRecentSeriesByTeam(teamId, limit);
+    const seriesInfos = await this.getRecentSeriesByTeam(teamId, limit);
     const states: GridSeriesState[] = [];
     
-    for (const id of seriesIds) {
+    for (const info of seriesInfos) {
       try {
-        const state = await this.getSeriesState(id);
-        if (state) states.push(state);
+        const state = await this.getSeriesState(info.id);
+        if (state) {
+          // Fallback to scheduled time if startedAt is missing
+          if (!state.startedAt && info.startTimeScheduled) {
+            state.startedAt = info.startTimeScheduled;
+          }
+          states.push(state);
+        }
       } catch (error) {
-        console.warn(`Could not fetch state for series ${id}:`, error);
+        console.warn(`Could not fetch state for series ${info.id}:`, error);
       }
     }
-    
     return states;
   }
 }
