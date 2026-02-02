@@ -10,6 +10,7 @@ export interface ScoutingReport {
   aggression: 'High' | 'Medium' | 'Low';
   avgScore: number;
   matchesAnalyzed: number;
+  isMockData?: boolean;
 }
 
 export * from './models.js';

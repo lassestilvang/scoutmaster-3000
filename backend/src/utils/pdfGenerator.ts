@@ -131,6 +131,16 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
           display: flex; 
           align-items: center; 
         }
+        .mock-warning {
+          background-color: #fff3cd;
+          color: #856404;
+          padding: 15px;
+          border-radius: 8px;
+          border: 1px solid #ffeeba;
+          text-align: center;
+          font-weight: bold;
+          margin-bottom: 20px;
+        }
         .dot { 
           width: 6px; height: 6px; 
           background-color: #007bff; 
@@ -151,6 +161,12 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
         <h1>ScoutMaster 3000 🎯</h1>
         <div class="subtitle">Scouting Report: ${report.opponentName}</div>
       </header>
+
+      ${report.isMockData ? `
+        <div class="mock-warning">
+          ⚠️ Note: Showing demo/mock data because the GRID API is currently unavailable or the team was not found.
+        </div>
+      ` : ''}
 
       <section>
         <h2>Team Snapshot</h2>

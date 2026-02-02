@@ -78,6 +78,19 @@ function App() {
 
       {report && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {report.isMockData && (
+            <div style={{ 
+              backgroundColor: '#fff3cd', 
+              color: '#856404', 
+              padding: '15px', 
+              borderRadius: '8px', 
+              border: '1px solid #ffeeba',
+              textAlign: 'center',
+              fontWeight: 'bold'
+            }}>
+              ⚠️ Note: Showing demo/mock data because the GRID API is currently unavailable or the team was not found.
+            </div>
+          )}
           {/* 1. Team Snapshot */}
           <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #007bff', paddingBottom: '10px', marginBottom: '10px' }}>

@@ -43,6 +43,7 @@ async function generateReport(matches: Match[], teamRef: string, fallbackName: s
     aggression,
     avgScore,
     matchesAnalyzed: matches.length,
+    isMockData: false,
   };
 }
 
@@ -111,6 +112,7 @@ function generateMockReport(teamName: string): ScoutingReport {
     aggression: 'High',
     avgScore: 14,
     matchesAnalyzed: 10,
+    isMockData: true,
   };
 }
 
