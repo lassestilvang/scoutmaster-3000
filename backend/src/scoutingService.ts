@@ -7,22 +7,45 @@ import {
   generateHowToWin 
 } from './analysis/scoutingAnalysis.js';
 
-export async function generateScoutingReport(teamName: string): Promise<ScoutingReport> {
-  // Use the new gridClient methods
-  const recentSeries = await gridClient.getTeamMatchesByName(teamName, 5);
-  
-  // Normalize all matches from the series
-  const allMatches: Match[] = recentSeries.flatMap(normalizeSeries);
-  
-  // Use pure analysis functions to generate metrics and insights
-  const winProbability = calculateWinRate(allMatches, teamName);
-  const insights = generateScoutingInsights(allMatches, teamName);
-  const howToWin = generateHowToWin(allMatches, teamName);
+/**
+ * Shared internal logic to generate a scouting report from normalized matches.
+ */
+async function generateReport(matches: Match[], teamRef: string, fallbackName: string): Promise<ScoutingReport> {
+  // Try to find the actual team name from the matches if possible
+  let actualName = fallbackName;
+  for (const match of matches) {
+    const team = match.teams.find(t => t.teamId === teamRef || t.teamName.toLowerCase() === teamRef.toLowerCase());
+    if (team) {
+      actualName = team.teamName;
+      break;
+    }
+  }
+
+  const winProbability = calculateWinRate(matches, teamRef);
+  const insights = generateScoutingInsights(matches, teamRef);
+  const howToWin = generateHowToWin(matches, teamRef);
 
   return {
-    opponentName: teamName,
+    opponentName: actualName,
     winProbability,
     keyInsights: insights,
     howToWin: howToWin,
   };
+}
+
+export async function generateScoutingReportByName(teamName: string, limit: number = 10): Promise<ScoutingReport> {
+  const recentSeries = await gridClient.getTeamMatchesByName(teamName, limit);
+  const allMatches: Match[] = recentSeries.flatMap(normalizeSeries);
+  return generateReport(allMatches, teamName, teamName);
+}
+
+export async function generateScoutingReportById(teamId: string, limit: number = 10): Promise<ScoutingReport> {
+  const recentSeries = await gridClient.getTeamMatches(teamId, limit);
+  const allMatches: Match[] = recentSeries.flatMap(normalizeSeries);
+  return generateReport(allMatches, teamId, `Team ${teamId}`);
+}
+
+// Deprecated: use generateScoutingReportByName instead
+export async function generateScoutingReport(teamName: string): Promise<ScoutingReport> {
+  return generateScoutingReportByName(teamName, 5);
 }

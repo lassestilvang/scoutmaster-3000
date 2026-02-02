@@ -1,12 +1,21 @@
 import { Match, MapStats, Player, StrategicInsight } from '@scoutmaster-3000/shared';
 
 /**
+ * Helper to find a team in a match by ID or Name.
+ */
+function findTeam(match: Match, teamRef: string) {
+  return match.teams.find(t => 
+    t.teamId === teamRef || t.teamName.toLowerCase() === teamRef.toLowerCase()
+  );
+}
+
+/**
  * Calculates the overall win rate for a team.
  */
-export function calculateWinRate(matches: Match[], teamName: string): number {
+export function calculateWinRate(matches: Match[], teamRef: string): number {
   if (matches.length === 0) return 0;
   const wins = matches.filter(m => {
-    const team = m.teams.find(t => t.teamName.toLowerCase() === teamName.toLowerCase());
+    const team = findTeam(m, teamRef);
     return team?.isWinner;
   }).length;
   return Math.round((wins / matches.length) * 100);
@@ -15,14 +24,14 @@ export function calculateWinRate(matches: Match[], teamName: string): number {
 /**
  * Aggregates statistics per map.
  */
-export function calculateMapStats(matches: Match[], teamName: string): MapStats[] {
+export function calculateMapStats(matches: Match[], teamRef: string): MapStats[] {
   const mapData: Record<string, { played: number; wins: number }> = {};
   
   matches.forEach(m => {
     const mapName = m.mapName;
     if (!mapData[mapName]) mapData[mapName] = { played: 0, wins: 0 };
     mapData[mapName].played++;
-    const team = m.teams.find(t => t.teamName.toLowerCase() === teamName.toLowerCase());
+    const team = findTeam(m, teamRef);
     if (team?.isWinner) mapData[mapName].wins++;
   });
 
@@ -36,10 +45,10 @@ export function calculateMapStats(matches: Match[], teamName: string): MapStats[
 /**
  * Calculates the average score per match.
  */
-export function calculateAverageScore(matches: Match[], teamName: string): number {
+export function calculateAverageScore(matches: Match[], teamRef: string): number {
   if (matches.length === 0) return 0;
   const totalScore = matches.reduce((acc, m) => {
-    const team = m.teams.find(t => t.teamName.toLowerCase() === teamName.toLowerCase());
+    const team = findTeam(m, teamRef);
     return acc + (team?.score || 0);
   }, 0);
   return Math.round(totalScore / matches.length);
@@ -48,22 +57,22 @@ export function calculateAverageScore(matches: Match[], teamName: string): numbe
 /**
  * Identifies the roster based on the most recent match.
  */
-export function identifyRecentRoster(matches: Match[], teamName: string): Player[] {
+export function identifyRecentRoster(matches: Match[], teamRef: string): Player[] {
   if (matches.length === 0) return [];
   // Use the most recent match to find the active roster
   const latestMatch = [...matches].sort((a, b) => 
     new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
   )[0];
   
-  const team = latestMatch.teams.find(t => t.teamName.toLowerCase() === teamName.toLowerCase());
+  const team = findTeam(latestMatch, teamRef);
   return team?.players || [];
 }
 
 /**
  * Detects aggression profile based on average scores.
  */
-export function calculateAggressionProfile(matches: Match[], teamName: string): 'High' | 'Medium' | 'Low' {
-  const avgScore = calculateAverageScore(matches, teamName);
+export function calculateAggressionProfile(matches: Match[], teamRef: string): 'High' | 'Medium' | 'Low' {
+  const avgScore = calculateAverageScore(matches, teamRef);
   // Arbitrary thresholds for demo purposes
   if (avgScore > 12) return 'High';
   if (avgScore > 8) return 'Medium';
@@ -73,13 +82,13 @@ export function calculateAggressionProfile(matches: Match[], teamName: string): 
 /**
  * Generates high-level insights from match data.
  */
-export function generateScoutingInsights(matches: Match[], teamName: string): string[] {
+export function generateScoutingInsights(matches: Match[], teamRef: string): string[] {
   if (matches.length === 0) return ['No recent matches found for this team.'];
 
-  const winRate = calculateWinRate(matches, teamName);
-  const mapStats = calculateMapStats(matches, teamName);
-  const aggression = calculateAggressionProfile(matches, teamName);
-  const roster = identifyRecentRoster(matches, teamName);
+  const winRate = calculateWinRate(matches, teamRef);
+  const mapStats = calculateMapStats(matches, teamRef);
+  const aggression = calculateAggressionProfile(matches, teamRef);
+  const roster = identifyRecentRoster(matches, teamRef);
   
   const insights: string[] = [
     `Performance: ${winRate}% win rate over the last ${matches.length} matches.`,
@@ -101,12 +110,12 @@ export function generateScoutingInsights(matches: Match[], teamName: string): st
 /**
  * Generates strategic "How to Win" recommendations using a rule-based engine.
  */
-export function generateHowToWin(matches: Match[], teamName: string): StrategicInsight[] {
+export function generateHowToWin(matches: Match[], teamRef: string): StrategicInsight[] {
   if (matches.length === 0) return [{ insight: 'Gather more data', evidence: '0 matches found' }];
 
-  const mapStats = calculateMapStats(matches, teamName);
-  const winRate = calculateWinRate(matches, teamName);
-  const aggression = calculateAggressionProfile(matches, teamName);
+  const mapStats = calculateMapStats(matches, teamRef);
+  const winRate = calculateWinRate(matches, teamRef);
+  const aggression = calculateAggressionProfile(matches, teamRef);
   
   const candidates: (StrategicInsight & { impact: number })[] = [];
 
@@ -139,13 +148,13 @@ export function generateHowToWin(matches: Match[], teamName: string): StrategicI
   if (aggression === 'High') {
     candidates.push({
       insight: "Prioritize defensive utility and spacing",
-      evidence: `Opponent averages ${calculateAverageScore(matches, teamName)} points per game, indicating high aggression`,
+      evidence: `Opponent averages ${calculateAverageScore(matches, teamRef)} points per game, indicating high aggression`,
       impact: 70
     });
   } else if (aggression === 'Low') {
     candidates.push({
       insight: "Initiate fast-paced executes",
-      evidence: `Opponent plays a slow game (avg ${calculateAverageScore(matches, teamName)} pts), making them vulnerable to speed`,
+      evidence: `Opponent plays a slow game (avg ${calculateAverageScore(matches, teamRef)} pts), making them vulnerable to speed`,
       impact: 75
     });
   }
