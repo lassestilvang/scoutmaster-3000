@@ -1,6 +1,6 @@
+import './loadEnv.js';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { 
   generateScoutingReportByName, 
   generateScoutingReportById,
@@ -8,7 +8,7 @@ import {
 } from './scoutingService.js';
 import { generatePdf } from './utils/pdfGenerator.js';
 
-dotenv.config();
+// Environment variables are loaded via ./loadEnv.js import at the top
 
 const app = express();
 const port = process.env.PORT || 3001;

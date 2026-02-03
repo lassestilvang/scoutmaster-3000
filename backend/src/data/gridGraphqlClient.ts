@@ -1,6 +1,4 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
+import '../loadEnv.js';
 
 const CENTRAL_DATA_ENDPOINT = 'https://api-op.grid.gg/central-data/graphql';
 const SERIES_STATE_ENDPOINT = 'https://api-op.grid.gg/live-data-feed/series-state/graphql';
