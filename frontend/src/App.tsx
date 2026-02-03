@@ -261,7 +261,16 @@ function App() {
       <header style={{ textAlign: 'center', marginBottom: '40px' }}>
         <h1 style={{ color: '#333' }}>
           <a href="/" style={{ color: 'inherit', textDecoration: 'none' }}>
-            ScoutMaster 3000 🎯
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}>
+              <img
+                src="/favicon.png"
+                width={28}
+                height={28}
+                alt="ScoutMaster 3000 icon"
+                style={{ display: 'block' }}
+              />
+              <span>ScoutMaster 3000</span>
+            </span>
           </a>
         </h1>
         <p style={{ color: '#666' }}>One-click opponent scouting for elite coaches.</p>
