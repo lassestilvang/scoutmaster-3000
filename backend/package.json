@@ -16,7 +16,9 @@
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
-    "puppeteer": "^24.36.1"
+    "puppeteer-core": "^24.36.1",
+    "@sparticuz/chromium": "^133.0.0",
+    "@upstash/redis": "^1.35.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

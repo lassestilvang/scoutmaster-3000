@@ -111,6 +111,7 @@ export class GridGraphqlClient {
   private fetchImpl: FetchImpl;
   private cacheDir?: string;
   private enableDiskCache: boolean;
+  private kvClientPromise?: Promise<any | undefined>;
 
   constructor(
     apiKey: string,
@@ -148,6 +149,70 @@ export class GridGraphqlClient {
   private cacheFilePath(cacheKey: string): string {
     const hash = crypto.createHash('sha256').update(cacheKey).digest('hex');
     return path.join(this.getEffectiveCacheDir(), `${hash}.json`);
+  }
+
+  private getKvEnv(): { url: string; token: string } | undefined {
+    // Supports both Vercel KV integration env vars and Upstash env vars.
+    const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+    if (!url || !token) return undefined;
+    return { url, token };
+  }
+
+  private async getKvClient(): Promise<any | undefined> {
+    if (this.kvClientPromise) return this.kvClientPromise;
+
+    const env = this.getKvEnv();
+    if (!env) {
+      this.kvClientPromise = Promise.resolve(undefined);
+      return this.kvClientPromise;
+    }
+
+    this.kvClientPromise = (async () => {
+      try {
+        const { Redis } = await import('@upstash/redis');
+        return new Redis({ url: env.url, token: env.token });
+      } catch {
+        return undefined;
+      }
+    })();
+
+    return this.kvClientPromise;
+  }
+
+  private kvCacheKey(cacheKey: string): string {
+    // Stable, hashed key to avoid huge Redis keys and allow schema changes via version bump.
+    const hash = crypto.createHash('sha256').update(cacheKey).digest('hex');
+    return `grid:gql:v1:${hash}`;
+  }
+
+  private async readKvCache<T>(cacheKey: string): Promise<{ data: T; expiresAt: number } | undefined> {
+    const kv = await this.getKvClient();
+    if (!kv) return undefined;
+
+    try {
+      const raw = await kv.get(this.kvCacheKey(cacheKey));
+      if (!raw) return undefined;
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!parsed || typeof parsed.expiresAt !== 'number') return undefined;
+      if (parsed.expiresAt <= Date.now()) return undefined;
+      return { data: parsed.data as T, expiresAt: parsed.expiresAt };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async writeKvCache(cacheKey: string, data: unknown, expiresAt: number): Promise<void> {
+    const kv = await this.getKvClient();
+    if (!kv) return;
+
+    try {
+      const ttlMs = Math.max(1, expiresAt - Date.now());
+      const ttlSeconds = Math.max(1, Math.ceil(ttlMs / 1000));
+      await kv.set(this.kvCacheKey(cacheKey), JSON.stringify({ expiresAt, data }), { ex: ttlSeconds });
+    } catch {
+      // Best-effort; KV cache should never break the request path.
+    }
   }
 
   private async readDiskCache<T>(cacheKey: string): Promise<{ data: T; expiresAt: number } | undefined> {
@@ -190,6 +255,12 @@ export class GridGraphqlClient {
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.data;
+    }
+
+    const kvCached = await this.readKvCache<T>(cacheKey);
+    if (kvCached !== undefined) {
+      this.cache.set(cacheKey, { data: kvCached.data, expiresAt: kvCached.expiresAt });
+      return kvCached.data;
     }
 
     const diskCached = await this.readDiskCache<T>(cacheKey);
@@ -267,7 +338,10 @@ export class GridGraphqlClient {
             data: result.data,
             expiresAt,
           });
-          await this.writeDiskCache(cacheKey, result.data, expiresAt);
+          await Promise.all([
+            this.writeDiskCache(cacheKey, result.data, expiresAt),
+            this.writeKvCache(cacheKey, result.data, expiresAt),
+          ]);
 
           return result.data;
         } catch (error: any) {
@@ -449,4 +523,7 @@ export class GridGraphqlClient {
 }
 
 // Export a singleton instance
-export const gridGraphqlClient = new GridGraphqlClient(GRID_API_KEY || '');
+export const gridGraphqlClient = new GridGraphqlClient(GRID_API_KEY || '', {
+  // Vercel serverless filesystem is ephemeral; don’t rely on disk persistence there.
+  enableDiskCache: !process.env.VERCEL,
+});

@@ -1,11 +1,61 @@
-import puppeteer from 'puppeteer';
+import fs from 'node:fs';
 import { ScoutingReport } from '@scoutmaster-3000/shared';
 
-export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
-  const browser = await puppeteer.launch({
+function resolveLocalChromeExecutablePath(): string {
+  const fromEnv = process.env.CHROME_EXECUTABLE_PATH;
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+
+  // Common local install locations (best-effort). This is only used outside Vercel.
+  const candidates: string[] = [
+    // macOS
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    // Linux
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+    '/snap/bin/chromium',
+  ];
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  throw new Error('Chrome/Chromium executable not found. Set CHROME_EXECUTABLE_PATH for local PDF generation.');
+}
+
+async function launchBrowser() {
+  const puppeteer = (await import('puppeteer-core')).default;
+
+  // Vercel serverless: use a serverless-compatible Chromium build.
+  if (process.env.VERCEL) {
+    const chromiumMod: any = await import('@sparticuz/chromium');
+    const chromium = chromiumMod?.default ?? chromiumMod;
+    const executablePath = await chromium.executablePath();
+    if (!executablePath) {
+      throw new Error('Chromium executable path could not be resolved on Vercel');
+    }
+
+    return puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: chromium.headless,
+    });
+  }
+
+  // Local dev: use system Chrome/Chromium (or CHROME_EXECUTABLE_PATH).
+  return puppeteer.launch({
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    executablePath: resolveLocalChromeExecutablePath(),
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
+}
+
+export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
+  const browser = await launchBrowser();
 
   const page = await browser.newPage();
 
@@ -521,19 +571,22 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
     </html>
   `;
 
-  await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-  
-  const pdfBuffer = await page.pdf({
-    format: 'A4',
-    printBackground: true,
-    margin: {
-      top: '20px',
-      right: '20px',
-      bottom: '20px',
-      left: '20px'
-    }
-  });
+  try {
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
 
-  await browser.close();
-  return pdfBuffer;
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '20px',
+        right: '20px',
+        bottom: '20px',
+        left: '20px'
+      }
+    });
+
+    return pdfBuffer;
+  } finally {
+    await browser.close();
+  }
 }
