@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ScoutingReport } from '@scoutmaster-3000/shared';
 
 type TeamSuggestion = { id: string; name: string };
+type DemoTeam = { id: string; name: string };
 
 function App() {
   const [health, setHealth] = useState<{ status: string; message: string } | null>(null);
@@ -19,10 +20,36 @@ function App() {
   const [error, setError] = useState<{ message: string; suggestions?: TeamSuggestion[] } | null>(null);
   const [hydratedFromUrl, setHydratedFromUrl] = useState(false);
 
-  const demoTeams: Record<'LOL' | 'VALORANT', string[]> = {
-    VALORANT: ['Cloud9', 'Sentinels', 'Fnatic', 'Team Liquid', 'Natus Vincere', 'G2 Esports'],
-    LOL: ['T1', 'G2 Esports', 'Fnatic', 'Team Liquid', 'Gen.G', 'Cloud9'],
-  };
+  const [demoTeams, setDemoTeams] = useState<DemoTeam[]>([]);
+  const [demoTeamsLoading, setDemoTeamsLoading] = useState(false);
+  const [demoTeamsError, setDemoTeamsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDemoTeamsLoading(true);
+    setDemoTeamsError(null);
+    fetch(`/api/demo-teams?game=${selectedGame.toLowerCase()}`)
+      .then((res) => res.json())
+      .then((data: any) => {
+        if (cancelled) return;
+        const teams = Array.isArray(data?.teams) ? data.teams : [];
+        setDemoTeams(teams);
+      })
+      .catch((err) => {
+        console.error('Error fetching demo teams:', err);
+        if (cancelled) return;
+        setDemoTeams([]);
+        setDemoTeamsError('Could not load verified demo teams.');
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setDemoTeamsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGame]);
 
   const buildShareUrl = (opts: {
     game: 'LOL' | 'VALORANT';
@@ -230,7 +257,11 @@ function App() {
   return (
     <div style={{ padding: '20px', maxWidth: compareMode ? '1180px' : '800px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f9f9f9', minHeight: '100vh', lineHeight: 1.4 }}>
       <header style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <h1 style={{ color: '#333' }}>ScoutMaster 3000 🎯</h1>
+        <h1 style={{ color: '#333' }}>
+          <a href="/" style={{ color: 'inherit', textDecoration: 'none' }}>
+            ScoutMaster 3000 🎯
+          </a>
+        </h1>
         <p style={{ color: '#666' }}>One-click opponent scouting for elite coaches.</p>
       </header>
 
@@ -304,6 +335,7 @@ function App() {
               <select
                 aria-label="Guided demo team"
                 defaultValue=""
+                disabled={demoTeamsLoading || demoTeams.length === 0}
                 onChange={(e) => {
                   const v = e.target.value;
                   if (!v) return;
@@ -312,9 +344,15 @@ function App() {
                 }}
                 style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ccc', minWidth: 200 }}
               >
-                <option value="">Try an example team…</option>
-                {demoTeams[selectedGame].map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                <option value="">
+                  {demoTeamsLoading
+                    ? 'Loading verified teams…'
+                    : demoTeams.length === 0
+                      ? 'No verified demo teams available'
+                      : 'Try an example team…'}
+                </option>
+                {demoTeams.map((t) => (
+                  <option key={t.id} value={t.name}>{t.name}</option>
                 ))}
               </select>
             </label>
@@ -322,15 +360,22 @@ function App() {
             <button
               type="button"
               onClick={() => {
-                const choices = demoTeams[selectedGame];
-                const pick = choices[Math.floor(Math.random() * choices.length)];
-                setTeamName(pick);
+                if (demoTeams.length === 0) return;
+                const pick = demoTeams[Math.floor(Math.random() * demoTeams.length)];
+                setTeamName(pick.name);
                 setError(null);
               }}
+              disabled={demoTeamsLoading || demoTeams.length === 0}
               style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 700 }}
             >
               Random example
             </button>
+
+            {demoTeamsError && (
+              <span style={{ fontSize: '0.82rem', color: '#856404', fontWeight: 700 }}>
+                {demoTeamsError}
+              </span>
+            )}
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
               <input
