@@ -207,6 +207,23 @@ async function generateReport(
   };
 }
 
+/**
+ * Public helper to build a report from already-normalized matches.
+ *
+ * This is used by tests (golden snapshots) and by any future code paths
+ * that want to bypass GRID fetching.
+ */
+export async function generateReportFromMatches(
+  matches: Match[],
+  teamRef: string,
+  fallbackName: string,
+  extras?: Pick<ScoutingReport, 'draftStats' | 'compositions' | 'mapPlans' | 'rosterStability' | 'playerTendencies'>,
+  ourTeamName?: string,
+  game?: 'LOL' | 'VALORANT'
+): Promise<ScoutingReport> {
+  return generateReport(matches, teamRef, fallbackName, extras, ourTeamName, game);
+}
+
 export async function generateScoutingReportByName(
   teamName: string,
   limit: number = 10,

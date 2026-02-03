@@ -1,0 +1,246 @@
+{
+  "opponentName": "TestTeam",
+  "game": "VALORANT",
+  "winProbability": 50,
+  "evidence": {
+    "startTime": "2026-01-01T00:00:00.000Z",
+    "endTime": "2026-01-06T00:00:00.000Z",
+    "matchesAnalyzed": 6,
+    "mapsPlayed": 2,
+    "seriesIds": [
+      "s1",
+      "s2",
+      "s3",
+      "s4",
+      "s5",
+      "s6"
+    ],
+    "winRateConfidence": "Medium"
+  },
+  "dataSources": [
+    {
+      "id": "central-data",
+      "name": "GRID Central Data (GraphQL)",
+      "endpoint": "https://api-op.grid.gg/central-data/graphql",
+      "purpose": "Team search + recent series IDs (discovery layer)",
+      "used": true
+    },
+    {
+      "id": "series-state",
+      "name": "GRID Series State (GraphQL)",
+      "endpoint": "https://api-op.grid.gg/live-data-feed/series-state/graphql",
+      "purpose": "Series results, per-map outcomes, players, and draft actions",
+      "used": true
+    }
+  ],
+  "rawInputs": {
+    "kind": "NormalizedMatches",
+    "totalMatches": 6,
+    "shownMatches": 6,
+    "truncated": false,
+    "matches": [
+      {
+        "matchId": "m6",
+        "seriesId": "s6",
+        "startTime": "2026-01-06T00:00:00.000Z",
+        "mapName": "Inferno",
+        "opponentName": "Other",
+        "teamScore": 7,
+        "opponentScore": 13,
+        "result": "L"
+      },
+      {
+        "matchId": "m5",
+        "seriesId": "s5",
+        "startTime": "2026-01-05T00:00:00.000Z",
+        "mapName": "Inferno",
+        "opponentName": "Other",
+        "teamScore": 7,
+        "opponentScore": 13,
+        "result": "L"
+      },
+      {
+        "matchId": "m4",
+        "seriesId": "s4",
+        "startTime": "2026-01-04T00:00:00.000Z",
+        "mapName": "Inferno",
+        "opponentName": "Other",
+        "teamScore": 7,
+        "opponentScore": 13,
+        "result": "L"
+      },
+      {
+        "matchId": "m3",
+        "seriesId": "s3",
+        "startTime": "2026-01-03T00:00:00.000Z",
+        "mapName": "Mirage",
+        "opponentName": "Other",
+        "teamScore": 13,
+        "opponentScore": 7,
+        "result": "W"
+      },
+      {
+        "matchId": "m2",
+        "seriesId": "s2",
+        "startTime": "2026-01-02T00:00:00.000Z",
+        "mapName": "Mirage",
+        "opponentName": "Other",
+        "teamScore": 13,
+        "opponentScore": 7,
+        "result": "W"
+      },
+      {
+        "matchId": "m1",
+        "seriesId": "s1",
+        "startTime": "2026-01-01T00:00:00.000Z",
+        "mapName": "Mirage",
+        "opponentName": "Other",
+        "teamScore": 13,
+        "opponentScore": 7,
+        "result": "W"
+      }
+    ]
+  },
+  "keyInsights": [
+    "Performance: 50% win rate over the last 6 matches (2026-01-01 → 2026-01-06) • Confidence: Medium.",
+    "Aggression: Displays a medium aggression profile based on scoring patterns (2026-01-01 → 2026-01-06, n=6).",
+    "Map Specialist: Particularly active on Mirage with a 100% success rate (3 games in window).",
+    "Roster: Core lineup features Alice and Bob (most recent roster snapshot)."
+  ],
+  "howToWin": [
+    {
+      "insight": "Force the series to Inferno",
+      "evidence": "Opponent has a 0% win rate on this map over 3 game(s) (2026-01-01 → 2026-01-06) • Confidence: Medium"
+    },
+    {
+      "insight": "Punish narrow map pool",
+      "evidence": "Opponent has only shown results on 2 map(s) in their last 6 matches (2026-01-01 → 2026-01-06) • Confidence: Medium"
+    }
+  ],
+  "howToWinEngine": {
+    "selected": [
+      {
+        "insight": "Force the series to Inferno",
+        "evidence": "Opponent has a 0% win rate on this map over 3 game(s) (2026-01-01 → 2026-01-06) • Confidence: Medium"
+      },
+      {
+        "insight": "Punish narrow map pool",
+        "evidence": "Opponent has only shown results on 2 map(s) in their last 6 matches (2026-01-01 → 2026-01-06) • Confidence: Medium"
+      }
+    ],
+    "candidates": [
+      {
+        "id": "map-weakness:Inferno",
+        "rule": "Map weakness",
+        "insight": "Force the series to Inferno",
+        "evidence": "Opponent has a 0% win rate on this map over 3 game(s) (2026-01-01 → 2026-01-06) • Confidence: Medium",
+        "status": "Selected",
+        "breakdown": {
+          "weaknessSeverity": 1,
+          "exploitability": 0.5,
+          "confidence": "Medium",
+          "confidenceFactor": 0.7,
+          "impact": 35
+        }
+      },
+      {
+        "id": "map-pool:narrow",
+        "rule": "Map pool",
+        "insight": "Punish narrow map pool",
+        "evidence": "Opponent has only shown results on 2 map(s) in their last 6 matches (2026-01-01 → 2026-01-06) • Confidence: Medium",
+        "status": "Selected",
+        "breakdown": {
+          "weaknessSeverity": 0.55,
+          "exploitability": 0.7,
+          "confidence": "Medium",
+          "confidenceFactor": 0.7,
+          "impact": 27
+        }
+      }
+    ],
+    "formula": "impact = weaknessSeverity × exploitability × confidence"
+  },
+  "topMaps": [
+    {
+      "mapName": "Mirage",
+      "matchesPlayed": 3,
+      "winRate": 1
+    },
+    {
+      "mapName": "Inferno",
+      "matchesPlayed": 3,
+      "winRate": 0
+    }
+  ],
+  "roster": [
+    {
+      "id": "p1",
+      "name": "Alice",
+      "teamId": "t1"
+    },
+    {
+      "id": "p2",
+      "name": "Bob",
+      "teamId": "t1"
+    }
+  ],
+  "rosterStability": {
+    "confidence": "High",
+    "matchesConsidered": 6,
+    "corePlayers": [
+      {
+        "id": "p1",
+        "name": "Alice",
+        "teamId": "t1"
+      },
+      {
+        "id": "p2",
+        "name": "Bob",
+        "teamId": "t1"
+      }
+    ],
+    "uniquePlayersSeen": 2
+  },
+  "playerTendencies": [
+    {
+      "playerId": "p1",
+      "playerName": "Alice",
+      "matchesPlayed": 6,
+      "winRate": 0.5,
+      "mapPerformance": [
+        {
+          "mapName": "Mirage",
+          "matchesPlayed": 3,
+          "winRate": 1
+        },
+        {
+          "mapName": "Inferno",
+          "matchesPlayed": 3,
+          "winRate": 0
+        }
+      ]
+    },
+    {
+      "playerId": "p2",
+      "playerName": "Bob",
+      "matchesPlayed": 6,
+      "winRate": 0.5,
+      "mapPerformance": [
+        {
+          "mapName": "Mirage",
+          "matchesPlayed": 3,
+          "winRate": 1
+        },
+        {
+          "mapName": "Inferno",
+          "matchesPlayed": 3,
+          "winRate": 0
+        }
+      ]
+    }
+  ],
+  "aggression": "Medium",
+  "avgScore": 10,
+  "matchesAnalyzed": 6,
+  "isMockData": false
+}
