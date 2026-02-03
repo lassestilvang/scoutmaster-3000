@@ -1,5 +1,9 @@
 import '../loadEnv.js';
 
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 const CENTRAL_DATA_ENDPOINT = 'https://api-op.grid.gg/central-data/graphql';
 const SERIES_STATE_ENDPOINT = 'https://api-op.grid.gg/live-data-feed/series-state/graphql';
 const GRID_API_KEY = process.env.GRID_API_KEY;
@@ -79,6 +83,22 @@ export interface GridGraphqlResponse<T> {
   }>;
 }
 
+export class GridRateLimitError extends Error {
+  retryAfterMs?: number;
+
+  constructor(message: string, retryAfterMs?: number) {
+    super(message);
+    this.name = 'GridRateLimitError';
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+export function isGridRateLimitError(err: unknown): err is GridRateLimitError {
+  return err instanceof GridRateLimitError;
+}
+
+type FetchImpl = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 /**
  * Production-ready GRID GraphQL Client for Cloud9 Hackathon
  */
@@ -87,8 +107,27 @@ export class GridGraphqlClient {
   private cache: Map<string, { data: any; expiresAt: number }> = new Map();
   private defaultTtl: number = 5 * 60 * 1000; // 5 minutes cache by default
 
-  constructor(apiKey: string) {
+  private inflight: Map<string, Promise<any>> = new Map();
+  private fetchImpl: FetchImpl;
+  private cacheDir?: string;
+  private enableDiskCache: boolean;
+
+  constructor(
+    apiKey: string,
+    opts?: {
+      fetchImpl?: FetchImpl;
+      cacheDir?: string;
+      enableDiskCache?: boolean;
+      ttlMs?: number;
+    }
+  ) {
     this.apiKey = apiKey;
+    this.fetchImpl = opts?.fetchImpl ?? fetch;
+    this.enableDiskCache = opts?.enableDiskCache ?? true;
+    this.cacheDir = opts?.cacheDir;
+    if (typeof opts?.ttlMs === 'number' && Number.isFinite(opts.ttlMs) && opts.ttlMs > 0) {
+      this.defaultTtl = opts.ttlMs;
+    }
   }
 
   /**
@@ -96,6 +135,47 @@ export class GridGraphqlClient {
    */
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private getEffectiveCacheDir(): string {
+    // Default to a repo-local cache folder for fast repeated demos.
+    // Users can override via constructor or env.
+    const fromEnv = process.env.GRID_CACHE_DIR;
+    const base = (this.cacheDir || fromEnv || path.join(process.cwd(), '.grid-cache')).trim();
+    return base;
+  }
+
+  private cacheFilePath(cacheKey: string): string {
+    const hash = crypto.createHash('sha256').update(cacheKey).digest('hex');
+    return path.join(this.getEffectiveCacheDir(), `${hash}.json`);
+  }
+
+  private async readDiskCache<T>(cacheKey: string): Promise<{ data: T; expiresAt: number } | undefined> {
+    if (!this.enableDiskCache) return undefined;
+
+    const filePath = this.cacheFilePath(cacheKey);
+    try {
+      const raw = await fs.readFile(filePath, 'utf8');
+      const parsed = JSON.parse(raw) as { expiresAt: number; data: T };
+      if (!parsed || typeof parsed.expiresAt !== 'number') return undefined;
+      if (parsed.expiresAt <= Date.now()) return undefined;
+      return { data: parsed.data, expiresAt: parsed.expiresAt };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async writeDiskCache(cacheKey: string, data: unknown, expiresAt: number): Promise<void> {
+    if (!this.enableDiskCache) return;
+
+    const dir = this.getEffectiveCacheDir();
+    const filePath = this.cacheFilePath(cacheKey);
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(filePath, JSON.stringify({ expiresAt, data }), 'utf8');
+    } catch {
+      // Best-effort; disk cache should never break the request path.
+    }
   }
 
   /**
@@ -112,84 +192,112 @@ export class GridGraphqlClient {
       return cached.data;
     }
 
-    let lastError: Error | null = null;
-    let delay = 500; // Starting delay for backoff: 500ms
-    const maxRetries = 3;
+    const diskCached = await this.readDiskCache<T>(cacheKey);
+    if (diskCached !== undefined) {
+      this.cache.set(cacheKey, { data: diskCached.data, expiresAt: diskCached.expiresAt });
+      return diskCached.data;
+    }
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': this.apiKey,
-          },
-          body: JSON.stringify({ query, variables }),
-        });
+    const inflight = this.inflight.get(cacheKey);
+    if (inflight) {
+      return inflight as Promise<T>;
+    }
 
-        // Handle Rate Limiting (HTTP 429)
-        if (response.status === 429) {
-          const retryAfter = response.headers.get('Retry-After');
-          const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : delay;
-          
-          if (attempt < maxRetries) {
-            console.warn(`GRID API rate limit hit (429). Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
-            await this.sleep(waitTime);
-            delay *= 2; // Exponential backoff
-            continue;
+    const p = (async () => {
+      let lastError: Error | null = null;
+      let delay = 500; // Starting delay for backoff: 500ms
+      const maxRetries = 3;
+      let lastRetryAfterMs: number | undefined;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const response = await this.fetchImpl(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': this.apiKey,
+            },
+            body: JSON.stringify({ query, variables }),
+          });
+
+          // Handle Rate Limiting (HTTP 429)
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            const parsed = retryAfter ? parseInt(retryAfter, 10) : NaN;
+            const waitTime = Number.isFinite(parsed) ? parsed * 1000 : delay;
+            lastRetryAfterMs = waitTime;
+
+            if (attempt < maxRetries) {
+              console.warn(`GRID API rate limit hit (429). Retrying in ${waitTime}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+              await this.sleep(waitTime);
+              delay *= 2; // Exponential backoff
+              continue;
+            }
+
+            throw new GridRateLimitError('GRID API rate limit exceeded (429).', lastRetryAfterMs);
           }
-        }
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          // Retry on 5xx server errors
-          if (response.status >= 500 && attempt < maxRetries) {
-            console.warn(`GRID API server error (${response.status}). Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+          if (!response.ok) {
+            const errorTextRaw = await response.text();
+            const errorText = errorTextRaw.length > 500 ? `${errorTextRaw.slice(0, 500)}…` : errorTextRaw;
+            // Retry on 5xx server errors
+            if (response.status >= 500 && attempt < maxRetries) {
+              console.warn(`GRID API server error (${response.status}). Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`);
+              await this.sleep(delay);
+              delay *= 2;
+              continue;
+            }
+            throw new Error(`GRID API HTTP error: ${response.status} - ${errorText}`);
+          }
+
+          const result = (await response.json()) as GridGraphqlResponse<T>;
+
+          if (result.errors && result.errors.length > 0) {
+            const messages = result.errors.map((e) => e.message).join(', ');
+            throw new Error(`GRID GraphQL Error: ${messages}`);
+          }
+
+          if (!result.data) {
+            throw new Error('GRID API returned no data.');
+          }
+
+          const expiresAt = Date.now() + this.defaultTtl;
+          // Cache successful response
+          this.cache.set(cacheKey, {
+            data: result.data,
+            expiresAt,
+          });
+          await this.writeDiskCache(cacheKey, result.data, expiresAt);
+
+          return result.data;
+        } catch (error: any) {
+          lastError = error;
+          // If it's not a retryable error, or we're out of attempts, throw
+          if (attempt === maxRetries) {
+            break;
+          }
+
+          // Handle network errors (Fetch throws on network failure)
+          if (error?.name === 'TypeError' || (typeof error?.message === 'string' && error.message.toLowerCase().includes('network'))) {
+            console.warn(`GRID API network error. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`);
             await this.sleep(delay);
             delay *= 2;
             continue;
           }
-          throw new Error(`GRID API HTTP error: ${response.status} - ${errorText}`);
+
+          throw error;
         }
-
-        const result = (await response.json()) as GridGraphqlResponse<T>;
-
-        if (result.errors && result.errors.length > 0) {
-          const messages = result.errors.map((e) => e.message).join(', ');
-          throw new Error(`GRID GraphQL Error: ${messages}`);
-        }
-
-        if (!result.data) {
-          throw new Error('GRID API returned no data.');
-        }
-
-        // Cache successful response
-        this.cache.set(cacheKey, {
-          data: result.data,
-          expiresAt: Date.now() + this.defaultTtl,
-        });
-
-        return result.data;
-      } catch (error: any) {
-        lastError = error;
-        // If it's not a retryable error, or we're out of attempts, throw
-        if (attempt === maxRetries) {
-          break;
-        }
-        
-        // Handle network errors (Fetch throws on network failure)
-        if (error.name === 'TypeError' || error.message.includes('network')) {
-           console.warn(`GRID API network error. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`);
-           await this.sleep(delay);
-           delay *= 2;
-           continue;
-        }
-
-        throw error;
       }
-    }
 
-    throw lastError || new Error('Failed to execute GRID query after multiple retries.');
+      throw lastError || new Error('Failed to execute GRID query after multiple retries.');
+    })();
+
+    this.inflight.set(cacheKey, p);
+    try {
+      return await p;
+    } finally {
+      this.inflight.delete(cacheKey);
+    }
   }
 
   /**

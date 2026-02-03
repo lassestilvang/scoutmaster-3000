@@ -5,6 +5,8 @@
 
 node_modules/
 dist/
+/.grid-cache/
+/backend/.grid-cache/
 /.env
 .env.*
 npm-debug.log*
