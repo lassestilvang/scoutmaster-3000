@@ -9,6 +9,24 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
 
   const page = await browser.newPage();
 
+  const fmtDate = (iso?: string) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return Number.isFinite(d.getTime()) ? d.toLocaleDateString() : iso;
+  };
+
+  const evidence = report.evidence;
+  const evidenceStart = fmtDate(evidence?.startTime);
+  const evidenceEnd = fmtDate(evidence?.endTime);
+  const evidenceSeries = (evidence?.seriesIds || []).join(', ') || '—';
+  const evidenceSample = evidence
+    ? `${evidence.matchesAnalyzed} matches • ${evidence.mapsPlayed} maps • ${evidence.seriesIds.length} series`
+    : '—';
+  const evidenceTrend = evidence?.winRateTrend;
+  const evidenceTrendText = evidenceTrend
+    ? `${evidenceTrend.direction === 'Up' ? '↑' : evidenceTrend.direction === 'Down' ? '↓' : '→'} ${evidenceTrend.direction} (${evidenceTrend.deltaPctPoints >= 0 ? '+' : ''}${evidenceTrend.deltaPctPoints}pp) — last ${evidenceTrend.recentMatches} vs previous ${evidenceTrend.previousMatches}`
+    : '—';
+
   const htmlContent = `
     <!DOCTYPE html>
     <html>
@@ -187,6 +205,20 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
       </section>
 
       <section>
+        <h3>🧾 Evidence &amp; Sources</h3>
+        <p style="margin: 0;"><strong>Time window:</strong> <span style="color: #666;">${evidenceStart} → ${evidenceEnd}</span></p>
+        <p style="margin: 6px 0 0 0;"><strong>Sample:</strong> <span style="color: #666;">${evidenceSample}</span></p>
+        <p style="margin: 6px 0 0 0;"><strong>Win-rate confidence:</strong> <span style="color: #666;">${evidence?.winRateConfidence ?? '—'}</span></p>
+        <p style="margin: 6px 0 0 0;"><strong>Trend:</strong> <span style="color: #666;">${evidenceTrendText}</span></p>
+
+        <h4 style="margin: 14px 0 6px 0;">Series IDs used</h4>
+        <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.8rem; color: #333; background: #f8f9fa; border: 1px solid #eee; border-radius: 8px; padding: 10px;">
+          ${evidenceSeries}
+        </div>
+        <div style="margin-top: 10px; font-size: 0.8rem; color: #666;">Data source: GRID Central Data + Series State GraphQL.</div>
+      </section>
+
+      <section>
         <h3>📊 Key Tendencies</h3>
         <p>
           <strong>Playstyle Aggression:</strong>
@@ -195,6 +227,9 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
             color: ${report.aggression === 'High' ? '#721c24' : report.aggression === 'Medium' ? '#856404' : '#155724'};
           ">${report.aggression}</span>
         </p>
+        <div style="margin-top: -6px; font-size: 0.8rem; color: #666;">
+          Definition: Aggression is a coarse proxy derived from average score per match (higher scoring tends to correlate with higher pace/volatility).
+        </div>
         <table>
           <thead>
             <tr>

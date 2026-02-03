@@ -11,6 +11,13 @@ function App() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [selectedGame, setSelectedGame] = useState<'LOL' | 'VALORANT'>('VALORANT');
 
+  const formatDate = (iso: string | undefined) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return iso;
+    return d.toLocaleDateString();
+  };
+
   useEffect(() => {
     fetch('/api/health')
       .then((res) => res.json())
@@ -227,11 +234,63 @@ function App() {
             </div>
           </section>
 
+          {/* 1.5 Evidence & Sources */}
+          {report.evidence && (
+            <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+              <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🧾 Evidence & Sources</h3>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px', marginTop: '10px' }}>
+                <div style={{ fontSize: '0.95rem', color: '#333' }}>
+                  <strong>Time window:</strong>{' '}
+                  <span style={{ color: '#666' }}>{formatDate(report.evidence.startTime)} → {formatDate(report.evidence.endTime)}</span>
+                </div>
+                <div style={{ fontSize: '0.95rem', color: '#333' }}>
+                  <strong>Sample:</strong>{' '}
+                  <span style={{ color: '#666' }}>
+                    {report.evidence.matchesAnalyzed} matches • {report.evidence.mapsPlayed} maps • {report.evidence.seriesIds.length} series
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.95rem', color: '#333' }}>
+                  <strong>Win-rate confidence:</strong>{' '}
+                  <span style={{ color: '#666' }}>{report.evidence.winRateConfidence}</span>
+                </div>
+              </div>
+
+              {report.evidence.winRateTrend && (
+                <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#333' }}>
+                  <strong>Trend:</strong>{' '}
+                  <span style={{ color: '#666' }}>
+                    {report.evidence.winRateTrend.direction === 'Up' ? '↑' : report.evidence.winRateTrend.direction === 'Down' ? '↓' : '→'}
+                    {' '}{report.evidence.winRateTrend.direction}
+                    {' '}({report.evidence.winRateTrend.deltaPctPoints >= 0 ? '+' : ''}{report.evidence.winRateTrend.deltaPctPoints}pp)
+                    {' '}— last {report.evidence.winRateTrend.recentMatches} vs previous {report.evidence.winRateTrend.previousMatches}
+                  </span>
+                </div>
+              )}
+
+              <details style={{ marginTop: '12px' }}>
+                <summary style={{ cursor: 'pointer', color: '#007bff', fontWeight: 700 }}>Series IDs used</summary>
+                <div style={{ marginTop: '8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '0.85rem', color: '#333', background: '#f8f9fa', border: '1px solid #eee', borderRadius: '8px', padding: '10px', overflowX: 'auto' }}>
+                  {report.evidence.seriesIds.length > 0 ? report.evidence.seriesIds.join(', ') : '—'}
+                </div>
+              </details>
+
+              <div style={{ marginTop: '10px', fontSize: '0.85rem', color: '#666' }}>
+                Data source: GRID Central Data + Series State GraphQL.
+              </div>
+            </section>
+          )}
+
           {/* 2. Key Tendencies */}
           <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
             <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>📊 Key Tendencies</h3>
             <div style={{ margin: '15px 0' }}>
-              <strong>Playstyle Aggression:</strong> <span style={{ 
+              <strong>Playstyle Aggression:</strong>
+              <span
+                title="Aggression is a coarse proxy derived from average score per match (higher scoring tends to correlate with higher pace/volatility)."
+                style={{ marginLeft: '6px', color: '#666', cursor: 'help', fontWeight: 700 }}
+              >ⓘ</span>
+              <span style={{ 
                 marginLeft: '10px',
                 padding: '4px 12px', 
                 borderRadius: '20px', 

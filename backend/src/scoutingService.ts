@@ -7,7 +7,7 @@ import {
   normalizeSeriesState,
 } from './data/normalizer.js';
 import { ScoutingReport, Match } from '@scoutmaster-3000/shared';
-import { 
+import {
   calculateWinRate, 
   generateScoutingInsights, 
   generateHowToWin,
@@ -17,8 +17,35 @@ import {
   calculateRosterStability,
   calculatePlayerTendencies,
   calculateAggressionProfile,
-  calculateAverageScore
+  calculateAverageScore,
+  calculateWinRateTrend
 } from './analysis/scoutingAnalysis.js';
+
+function buildReportEvidence(matches: Match[], teamRef: string): ScoutingReport['evidence'] {
+  const matchesAnalyzed = matches.length;
+  const mapsPlayed = new Set(matches.map(m => m.mapName || 'Unknown')).size;
+  const seriesIds = [...new Set(matches.map(m => m.seriesId).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+
+  const times = matches
+    .map(m => new Date(m.startTime).getTime())
+    .filter(t => Number.isFinite(t));
+
+  const startTime = times.length > 0 ? new Date(Math.min(...times)).toISOString() : new Date().toISOString();
+  const endTime = times.length > 0 ? new Date(Math.max(...times)).toISOString() : new Date().toISOString();
+
+  const winRateConfidence = matchesAnalyzed >= 8 ? 'High' : matchesAnalyzed >= 4 ? 'Medium' : 'Low';
+  const winRateTrend = calculateWinRateTrend(matches, teamRef);
+
+  return {
+    startTime,
+    endTime,
+    matchesAnalyzed,
+    mapsPlayed,
+    seriesIds,
+    winRateConfidence,
+    winRateTrend,
+  };
+}
 
 /**
  * Shared internal logic to generate a scouting report from normalized matches.
@@ -42,6 +69,7 @@ async function generateReport(
   }
 
   const winProbability = calculateWinRate(matches, teamRef);
+  const evidence = buildReportEvidence(matches, teamRef);
   const insights = generateScoutingInsights(matches, teamRef);
   const howToWin = generateHowToWin(matches, teamRef);
   const topMaps = calculateMapStats(matches, teamRef);
@@ -56,6 +84,7 @@ async function generateReport(
     opponentName: actualName,
     game,
     winProbability,
+    evidence,
     keyInsights: insights,
     howToWin: howToWin,
     topMaps,
@@ -202,6 +231,16 @@ function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT', ourTeam
     { id: 'p2', name: 'MockPlayer2', teamId: 'mock' }
   ];
 
+  const now = Date.now();
+  const evidence: ScoutingReport['evidence'] = {
+    startTime: new Date(now - (14 * 24 * 60 * 60 * 1000)).toISOString(),
+    endTime: new Date(now).toISOString(),
+    matchesAnalyzed: 10,
+    mapsPlayed: 2,
+    seriesIds: Array.from({ length: 10 }, (_, i) => `mock-series-${i + 1}`),
+    winRateConfidence: 'Medium',
+  };
+
   const howToWin = ourTeamName
     ? [
         {
@@ -227,6 +266,7 @@ function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT', ourTeam
     opponentName: teamName,
     game,
     winProbability: 65,
+    evidence,
     keyInsights: [
       `Aggression: Displays a high aggression profile based on scoring patterns.`,
       `Map Specialist: Particularly active on Mirage with a 75% success rate.`

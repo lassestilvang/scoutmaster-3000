@@ -7,7 +7,63 @@ import {
   PlayerMapPerformance,
   PlayerDraftableStat,
   RosterStability,
+  Confidence,
+  WinRateTrend,
 } from '@scoutmaster-3000/shared';
+
+function confidenceFromSampleSize(n: number): Confidence {
+  if (n >= 8) return 'High';
+  if (n >= 4) return 'Medium';
+  return 'Low';
+}
+
+function formatTimeWindow(matches: Match[]): string {
+  if (matches.length === 0) return 'no time window';
+  const times = matches
+    .map(m => new Date(m.startTime).getTime())
+    .filter(t => Number.isFinite(t));
+  if (times.length === 0) return 'unknown time window';
+  const start = new Date(Math.min(...times)).toISOString().slice(0, 10);
+  const end = new Date(Math.max(...times)).toISOString().slice(0, 10);
+  return `${start} → ${end}`;
+}
+
+/**
+ * Computes a simple win-rate trend by comparing the most recent `recentCount` matches
+ * to the preceding `recentCount` matches.
+ */
+export function calculateWinRateTrend(
+  matches: Match[],
+  teamRef: string,
+  recentCount: number = 5
+): WinRateTrend | undefined {
+  if (matches.length < 4) return undefined;
+  const sorted = [...matches].sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+
+  const recent = sorted.slice(0, recentCount);
+  const previous = sorted.slice(recentCount, recentCount * 2);
+  if (recent.length < 2 || previous.length < 2) return undefined;
+
+  const winRate = (ms: Match[]) => {
+    const wins = ms.filter(m => findTeam(m, teamRef)?.isWinner).length;
+    return ms.length > 0 ? wins / ms.length : 0;
+  };
+
+  const recentWinRate = winRate(recent);
+  const previousWinRate = winRate(previous);
+  const delta = recentWinRate - previousWinRate;
+
+  const direction: WinRateTrend['direction'] = delta >= 0.05 ? 'Up' : delta <= -0.05 ? 'Down' : 'Flat';
+
+  return {
+    direction,
+    deltaPctPoints: Math.round(delta * 100),
+    recentWinRate,
+    previousWinRate,
+    recentMatches: recent.length,
+    previousMatches: previous.length,
+  };
+}
 
 /**
  * Helper to find a team in a match by ID or Name.
@@ -256,19 +312,31 @@ export function generateScoutingInsights(matches: Match[], teamRef: string): str
   const mapStats = calculateMapStats(matches, teamRef);
   const aggression = calculateAggressionProfile(matches, teamRef);
   const roster = identifyRecentRoster(matches, teamRef);
+  const window = formatTimeWindow(matches);
+  const confidence = confidenceFromSampleSize(matches.length);
+  const trend = calculateWinRateTrend(matches, teamRef);
   
   const insights: string[] = [
-    `Performance: ${winRate}% win rate over the last ${matches.length} matches.`,
-    `Aggression: Displays a ${aggression.toLowerCase()} aggression profile based on scoring patterns.`,
+    `Performance: ${winRate}% win rate over the last ${matches.length} matches (${window}) • Confidence: ${confidence}.`,
+    `Aggression: Displays a ${aggression.toLowerCase()} aggression profile based on scoring patterns (${window}, n=${matches.length}).`,
   ];
+
+  if (trend) {
+    const arrow = trend.direction === 'Up' ? '↑' : trend.direction === 'Down' ? '↓' : '→';
+    insights.push(
+      `Trend: ${arrow} ${trend.direction} (${trend.deltaPctPoints >= 0 ? '+' : ''}${trend.deltaPctPoints}pp) comparing last ${trend.recentMatches} vs previous ${trend.previousMatches} matches.`
+    );
+  }
 
   if (mapStats.length > 0) {
     const favoriteMap = mapStats[0];
-    insights.push(`Map Specialist: Particularly active on ${favoriteMap.mapName} with a ${Math.round(favoriteMap.winRate * 100)}% success rate.`);
+    insights.push(
+      `Map Specialist: Particularly active on ${favoriteMap.mapName} with a ${Math.round(favoriteMap.winRate * 100)}% success rate (${favoriteMap.matchesPlayed} games in window).`
+    );
   }
 
   if (roster.length > 0) {
-    insights.push(`Roster: Core lineup features ${roster.slice(0, 2).map(p => p.name).join(' and ')}.`);
+    insights.push(`Roster: Core lineup features ${roster.slice(0, 2).map(p => p.name).join(' and ')} (most recent roster snapshot).`);
   }
 
   return insights;
@@ -283,30 +351,43 @@ export function generateHowToWin(matches: Match[], teamRef: string): StrategicIn
   const mapStats = calculateMapStats(matches, teamRef);
   const winRate = calculateWinRate(matches, teamRef);
   const aggression = calculateAggressionProfile(matches, teamRef);
+  const window = formatTimeWindow(matches);
   
   const candidates: (StrategicInsight & { impact: number })[] = [];
 
   // Rule 1: Map Pool Weaknesses (High Impact)
-  const weakMaps = mapStats.filter(m => m.winRate < 0.4 && m.matchesPlayed >= 1);
+  const mapConfidence = (n: number): Confidence => (n >= 4 ? 'High' : n >= 2 ? 'Medium' : 'Low');
+  const weakMaps = mapStats.filter(m => m.winRate < 0.4 && m.matchesPlayed >= 2);
   weakMaps.forEach(map => {
     candidates.push({
       insight: `Force the series to ${map.mapName}`,
-      evidence: `Opponent has a ${Math.round(map.winRate * 100)}% win rate on this map over ${map.matchesPlayed} games`,
+      evidence: `Opponent has a ${Math.round(map.winRate * 100)}% win rate on this map over ${map.matchesPlayed} games (${window}) • Confidence: ${mapConfidence(map.matchesPlayed)}`,
       impact: 90 - (map.winRate * 100) // Lower win rate = higher impact
     });
   });
+
+  if (weakMaps.length === 0 && mapStats.length > 0 && matches.length >= 2) {
+    const maxSample = Math.max(...mapStats.map(s => s.matchesPlayed));
+    if (maxSample < 2) {
+      candidates.push({
+        insight: 'Treat map-pool conclusions cautiously',
+        evidence: `No map has at least 2 games in the current window (${window}), so map-specific weaknesses are low confidence`,
+        impact: 40,
+      });
+    }
+  }
 
   // Rule 2: Exploit Recent Momentum (Medium-High Impact)
   if (winRate < 40) {
     candidates.push({
       insight: "Aggressive early-game pressure",
-      evidence: `Opponent is on a cold streak with only ${winRate}% total win rate`,
+      evidence: `Opponent is on a cold streak with only ${winRate}% total win rate (${window}, n=${matches.length}) • Confidence: ${confidenceFromSampleSize(matches.length)}`,
       impact: 80 - winRate
     });
   } else if (winRate > 70) {
     candidates.push({
       insight: "Disrupt their rhythm with early timeouts",
-      evidence: `Opponent has high confidence with a ${winRate}% win rate`,
+      evidence: `Opponent has high confidence with a ${winRate}% win rate (${window}, n=${matches.length}) • Confidence: ${confidenceFromSampleSize(matches.length)}`,
       impact: 60 // Lower impact because it's a strength-based counter
     });
   }
@@ -315,13 +396,13 @@ export function generateHowToWin(matches: Match[], teamRef: string): StrategicIn
   if (aggression === 'High') {
     candidates.push({
       insight: "Prioritize defensive utility and spacing",
-      evidence: `Opponent averages ${calculateAverageScore(matches, teamRef)} points per game, indicating high aggression`,
+      evidence: `Opponent averages ${calculateAverageScore(matches, teamRef)} points per game (${window}), indicating high aggression • Confidence: ${confidenceFromSampleSize(matches.length)}`,
       impact: 70
     });
   } else if (aggression === 'Low') {
     candidates.push({
       insight: "Initiate fast-paced executes",
-      evidence: `Opponent plays a slow game (avg ${calculateAverageScore(matches, teamRef)} pts), making them vulnerable to speed`,
+      evidence: `Opponent plays a slow game (avg ${calculateAverageScore(matches, teamRef)} pts) in window (${window}) • Confidence: ${confidenceFromSampleSize(matches.length)}`,
       impact: 75
     });
   }
@@ -330,7 +411,7 @@ export function generateHowToWin(matches: Match[], teamRef: string): StrategicIn
   if (mapStats.length < 3 && matches.length >= 3) {
     candidates.push({
       insight: "Punish narrow map pool",
-      evidence: `Opponent has only shown comfort on ${mapStats.length} maps in their last ${matches.length} series`,
+      evidence: `Opponent has only shown comfort on ${mapStats.length} maps in their last ${matches.length} matches (${window})`,
       impact: 65
     });
   }
@@ -339,7 +420,7 @@ export function generateHowToWin(matches: Match[], teamRef: string): StrategicIn
   if (matches.length < 3) {
     candidates.push({
       insight: "Prepare for unknown strategies",
-      evidence: `Only ${matches.length} recent matches available for analysis`,
+      evidence: `Only ${matches.length} recent matches available for analysis (${window}) • Confidence: Low`,
       impact: 30
     });
   }

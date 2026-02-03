@@ -7,6 +7,7 @@ import {
   CompositionStats,
   PlayerTendency,
   RosterStability,
+  ReportEvidence,
 } from './models.js';
 
 export interface ScoutingReport {
@@ -17,6 +18,7 @@ export interface ScoutingReport {
   opponentName: string;
   game?: 'LOL' | 'VALORANT';
   winProbability: number;
+  evidence: ReportEvidence;
   keyInsights: string[];
   howToWin: StrategicInsight[];
   topMaps: MapStats[];

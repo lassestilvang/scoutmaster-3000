@@ -31,6 +31,33 @@ export interface StrategicInsight {
   evidence: string;
 }
 
+export type Confidence = 'High' | 'Medium' | 'Low';
+
+export interface WinRateTrend {
+  direction: 'Up' | 'Down' | 'Flat';
+  /**
+   * recentWinRate - previousWinRate, in percentage points.
+   */
+  deltaPctPoints: number;
+  recentWinRate: number; // 0 to 1
+  previousWinRate: number; // 0 to 1
+  recentMatches: number;
+  previousMatches: number;
+}
+
+/**
+ * High-level provenance + context to make insights auditable.
+ */
+export interface ReportEvidence {
+  startTime: string;
+  endTime: string;
+  matchesAnalyzed: number;
+  mapsPlayed: number;
+  seriesIds: string[];
+  winRateConfidence: Confidence;
+  winRateTrend?: WinRateTrend;
+}
+
 export interface MapStats {
   mapName: string;
   matchesPlayed: number;
