@@ -19,8 +19,72 @@ import {
   calculatePlayerTendencies,
   calculateAggressionProfile,
   calculateAverageScore,
-  calculateWinRateTrend
+  calculateWinRateTrend,
+  filterMatchesByTimeframe
 } from './analysis/scoutingAnalysis.js';
+
+class TeamNotFoundError extends Error {
+  which: 'opponent' | 'our';
+  query: string;
+  suggestions: Array<{ id: string; name: string }>;
+
+  constructor(which: 'opponent' | 'our', query: string, suggestions: Array<{ id: string; name: string }>) {
+    super(`Team not found: ${query}`);
+    this.name = 'TeamNotFoundError';
+    this.which = which;
+    this.query = query;
+    this.suggestions = suggestions;
+  }
+}
+
+export function isTeamNotFoundError(error: unknown): error is TeamNotFoundError {
+  return error instanceof TeamNotFoundError;
+}
+
+function filterSeriesStatesByTimeframe(seriesStates: any[], timeframeDays?: number, now: number = Date.now()) {
+  if (!timeframeDays || !Number.isFinite(timeframeDays) || timeframeDays <= 0) return seriesStates;
+  const cutoff = now - timeframeDays * 24 * 60 * 60 * 1000;
+  return seriesStates.filter(ss => {
+    const t = new Date(ss?.startedAt || '').getTime();
+    if (!Number.isFinite(t)) return true;
+    return t >= cutoff;
+  });
+}
+
+function normalizeQueryForSuggestions(query: string): string {
+  return query
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function suggestTeams(query: string, game?: 'LOL' | 'VALORANT'): Promise<Array<{ id: string; name: string }>> {
+  const candidates: string[] = [];
+  const normalized = normalizeQueryForSuggestions(query);
+  if (normalized) candidates.push(normalized);
+
+  const parts = normalized.split(' ').filter(Boolean);
+  if (parts.length >= 2) {
+    candidates.push(parts[0]);
+    candidates.push(parts.slice(0, 2).join(' '));
+    candidates.push(parts[parts.length - 1]);
+  }
+
+  const seen = new Set<string>();
+  const out: Array<{ id: string; name: string }> = [];
+  for (const q of candidates) {
+    if (!q || seen.has(q.toLowerCase())) continue;
+    seen.add(q.toLowerCase());
+    const results = await searchTeams(q, game);
+    for (const r of results) {
+      const key = r.id;
+      if (out.find(x => x.id === key)) continue;
+      out.push(r);
+      if (out.length >= 10) return out;
+    }
+  }
+  return out;
+}
 
 function buildReportEvidence(matches: Match[], teamRef: string): ScoutingReport['evidence'] {
   const matchesAnalyzed = matches.length;
@@ -104,23 +168,30 @@ async function generateReport(
   };
 }
 
-export async function generateScoutingReportByName(teamName: string, limit: number = 10, game?: 'LOL' | 'VALORANT'): Promise<ScoutingReport> {
+export async function generateScoutingReportByName(
+  teamName: string,
+  limit: number = 10,
+  game?: 'LOL' | 'VALORANT',
+  timeframeDays?: number
+): Promise<ScoutingReport> {
   try {
     // 1. Find the team ID (optionally filter by game)
     const teams = await gridGraphqlClient.findTeamsByName(teamName, 1, game);
     if (teams.length === 0) {
-      console.error(`Error generating scouting report from real data, falling back to mock: Team "${teamName}" not found in GRID Central Data.`);
-      return generateMockReport(teamName, game);
+      const suggestions = await suggestTeams(teamName, game);
+      throw new TeamNotFoundError('opponent', teamName, suggestions);
     }
 
     const teamId = teams[0].id;
     const actualTeamName = teams[0].name;
 
     // 2. Get full series states
-    const seriesStates = await gridGraphqlClient.getFullSeriesByTeam(teamId, limit);
+    const seriesStatesRaw = await gridGraphqlClient.getFullSeriesByTeam(teamId, limit);
+    const seriesStates = filterSeriesStatesByTimeframe(seriesStatesRaw, timeframeDays);
     
     // 3. Normalize and generate report
-    const allMatches: Match[] = seriesStates.flatMap(normalizeSeriesState);
+    const allMatchesRaw: Match[] = seriesStates.flatMap(normalizeSeriesState);
+    const allMatches: Match[] = filterMatchesByTimeframe(allMatchesRaw, timeframeDays);
     const draftStats = normalizeDraftStats(seriesStates, teamId);
     const compositions = normalizeCompositionStats(seriesStates, teamId);
     const mapPlans = normalizeMapPlans(seriesStates, teamId);
@@ -136,9 +207,16 @@ export async function generateScoutingReportByName(teamName: string, limit: numb
       game
     );
   } catch (error) {
-    console.error('Error generating scouting report from real data, falling back to mock:', (error as any).message);
-    // If we have a real team name, use it in the mock report
-    return generateMockReport(teamName, game);
+    if (error instanceof TeamNotFoundError) {
+      throw error;
+    }
+
+    const msg = (error as any)?.message || '';
+    const missingKey = typeof msg === 'string' && msg.includes('GRID_API_KEY is missing');
+    console.error('Error generating scouting report from real data, falling back to mock:', msg);
+    return generateMockReport(teamName, game, undefined, {
+      mockReason: missingKey ? 'MissingApiKey' : 'ApiError'
+    });
   }
 }
 
@@ -171,7 +249,8 @@ export async function generateMatchupScoutingReportByName(
   ourTeamName: string,
   opponentTeamName: string,
   limit: number = 10,
-  game?: 'LOL' | 'VALORANT'
+  game?: 'LOL' | 'VALORANT',
+  timeframeDays?: number
 ): Promise<ScoutingReport> {
   try {
     const [ourTeams, opponentTeams] = await Promise.all([
@@ -180,8 +259,10 @@ export async function generateMatchupScoutingReportByName(
     ]);
 
     if (ourTeams.length === 0 || opponentTeams.length === 0) {
-      console.error('Matchup report falling back to mock: could not resolve both teams in GRID Central Data.');
-      return generateMockReport(opponentTeamName, game, ourTeamName);
+      const which = ourTeams.length === 0 ? 'our' : 'opponent';
+      const query = ourTeams.length === 0 ? ourTeamName : opponentTeamName;
+      const suggestions = await suggestTeams(query, game);
+      throw new TeamNotFoundError(which, query, suggestions);
     }
 
     const ourId = ourTeams[0].id;
@@ -189,13 +270,19 @@ export async function generateMatchupScoutingReportByName(
     const opponentId = opponentTeams[0].id;
     const opponentActualName = opponentTeams[0].name;
 
-    const [ourSeriesStates, opponentSeriesStates] = await Promise.all([
+    const [ourSeriesStatesRaw, opponentSeriesStatesRaw] = await Promise.all([
       gridGraphqlClient.getFullSeriesByTeam(ourId, limit),
       gridGraphqlClient.getFullSeriesByTeam(opponentId, limit),
     ]);
 
-    const opponentMatches: Match[] = opponentSeriesStates.flatMap(normalizeSeriesState);
-    const ourMatches: Match[] = ourSeriesStates.flatMap(normalizeSeriesState);
+    const ourSeriesStates = filterSeriesStatesByTimeframe(ourSeriesStatesRaw, timeframeDays);
+    const opponentSeriesStates = filterSeriesStatesByTimeframe(opponentSeriesStatesRaw, timeframeDays);
+
+    const opponentMatchesRaw: Match[] = opponentSeriesStates.flatMap(normalizeSeriesState);
+    const ourMatchesRaw: Match[] = ourSeriesStates.flatMap(normalizeSeriesState);
+
+    const opponentMatches: Match[] = filterMatchesByTimeframe(opponentMatchesRaw, timeframeDays);
+    const ourMatches: Match[] = filterMatchesByTimeframe(ourMatchesRaw, timeframeDays);
 
     const draftStats = normalizeDraftStats(opponentSeriesStates, opponentId);
     const compositions = normalizeCompositionStats(opponentSeriesStates, opponentId);
@@ -221,15 +308,27 @@ export async function generateMatchupScoutingReportByName(
     report.howToWinEngine = undefined;
     return report;
   } catch (error) {
-    console.error('Error generating matchup scouting report from real data, falling back to mock:', (error as any).message);
-    return generateMockReport(opponentTeamName, game, ourTeamName);
+    if (error instanceof TeamNotFoundError) {
+      throw error;
+    }
+    const msg = (error as any)?.message || '';
+    const missingKey = typeof msg === 'string' && msg.includes('GRID_API_KEY is missing');
+    console.error('Error generating matchup scouting report from real data, falling back to mock:', msg);
+    return generateMockReport(opponentTeamName, game, ourTeamName, {
+      mockReason: missingKey ? 'MissingApiKey' : 'ApiError'
+    });
   }
 }
 
 /**
  * Generates a mock report for demo/fallback purposes.
  */
-function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT', ourTeamName?: string): ScoutingReport {
+function generateMockReport(
+  teamName: string,
+  game?: 'LOL' | 'VALORANT',
+  ourTeamName?: string,
+  extras?: Pick<ScoutingReport, 'mockReason' | 'suggestedTeams'>
+): ScoutingReport {
   // Simple mock data for demo
   const roster = [
     { id: 'p1', name: 'MockPlayer1', teamId: 'mock' },
@@ -365,6 +464,8 @@ function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT', ourTeam
       { kind: 'AGENT', members: ['Raze', 'Brimstone', 'Sova', 'Cypher', 'Fade'], pickCount: 2, winRate: 0.50 },
     ],
     isMockData: true,
+    mockReason: extras?.mockReason,
+    suggestedTeams: extras?.suggestedTeams,
   };
 }
 

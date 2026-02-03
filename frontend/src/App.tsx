@@ -1,15 +1,69 @@
 import React, { useState, useEffect } from 'react';
 import { ScoutingReport } from '@scoutmaster-3000/shared';
 
+type TeamSuggestion = { id: string; name: string };
+
 function App() {
   const [health, setHealth] = useState<{ status: string; message: string } | null>(null);
   const [teamName, setTeamName] = useState('');
   const [ourTeamName, setOurTeamName] = useState('');
-  const [suggestions, setSuggestions] = useState<Array<{ id: string, name: string }>>([]);
+  const [suggestions, setSuggestions] = useState<TeamSuggestion[]>([]);
+  const [teamNameB, setTeamNameB] = useState('');
+  const [suggestionsB, setSuggestionsB] = useState<TeamSuggestion[]>([]);
   const [report, setReport] = useState<ScoutingReport | null>(null);
+  const [reportB, setReportB] = useState<ScoutingReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [selectedGame, setSelectedGame] = useState<'LOL' | 'VALORANT'>('VALORANT');
+  const [compareMode, setCompareMode] = useState(false);
+  const [limit, setLimit] = useState(10);
+  const [timeframeDays, setTimeframeDays] = useState<number>(60);
+  const [error, setError] = useState<{ message: string; suggestions?: TeamSuggestion[] } | null>(null);
+  const [hydratedFromUrl, setHydratedFromUrl] = useState(false);
+
+  const demoTeams: Record<'LOL' | 'VALORANT', string[]> = {
+    VALORANT: ['Cloud9', 'Sentinels', 'Fnatic', 'Team Liquid', 'Natus Vincere', 'G2 Esports'],
+    LOL: ['T1', 'G2 Esports', 'Fnatic', 'Team Liquid', 'Gen.G', 'Cloud9'],
+  };
+
+  const buildShareUrl = (opts: {
+    game: 'LOL' | 'VALORANT';
+    team: string;
+    ourTeam?: string;
+    limit: number;
+    timeframeDays?: number;
+    compareMode?: boolean;
+    teamB?: string;
+  }) => {
+    const params = new URLSearchParams();
+    params.set('game', opts.game.toLowerCase());
+    params.set('team', opts.team);
+    params.set('limit', String(opts.limit));
+    if (opts.timeframeDays) params.set('days', String(opts.timeframeDays));
+    if (opts.ourTeam) params.set('our', opts.ourTeam);
+    if (opts.compareMode) params.set('compare', '1');
+    if (opts.teamB) params.set('teamB', opts.teamB);
+
+    const base = window.location.origin + window.location.pathname;
+    return `${base}?${params.toString()}`;
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // Fallback for environments without Clipboard API.
+      const el = document.createElement('textarea');
+      el.value = text;
+      el.style.position = 'fixed';
+      el.style.left = '-9999px';
+      document.body.appendChild(el);
+      el.focus();
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+    }
+  };
 
   const formatDate = (iso: string | undefined) => {
     if (!iso) return '—';
@@ -42,40 +96,165 @@ function App() {
     return () => clearTimeout(timer);
   }, [teamName, selectedGame]);
 
-  const handleDownloadPdf = () => {
-    if (!report) return;
-    const teamNameEncoded = encodeURIComponent(report.opponentName);
-    const gameParam = (report.game || selectedGame).toLowerCase();
-    const params = new URLSearchParams({ game: gameParam });
-    if (report.ourTeamName) {
-      params.set('ourTeamName', report.ourTeamName);
+  useEffect(() => {
+    if (teamNameB.length < 2) {
+      setSuggestionsB([]);
+      return;
     }
-    window.location.href = `/api/scout/name/${teamNameEncoded}/pdf?${params.toString()}`;
-  };
 
-  const handleScout = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!teamName) return;
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ q: teamNameB, game: selectedGame.toLowerCase() });
+      fetch(`/api/teams/search?${params.toString()}`)
+        .then((res) => res.json())
+        .then((data) => setSuggestionsB(data))
+        .catch((err) => console.error('Error fetching suggestions:', err));
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [teamNameB, selectedGame]);
+
+  const runScout = async (opts?: {
+    team?: string;
+    ourTeam?: string;
+    game?: 'LOL' | 'VALORANT';
+    limit?: number;
+    timeframeDays?: number;
+    compareMode?: boolean;
+    teamB?: string;
+  }) => {
+    const team = (opts?.team ?? teamName).trim();
+    const teamB = (opts?.teamB ?? teamNameB).trim();
+    const our = (opts?.ourTeam ?? ourTeamName).trim();
+    const game = opts?.game ?? selectedGame;
+    const limitN = opts?.limit ?? limit;
+    const daysN = opts?.timeframeDays ?? timeframeDays;
+    const compare = opts?.compareMode ?? compareMode;
+
+    if (!team) return;
+    if (compare && !teamB) return;
 
     setLoading(true);
+    setError(null);
     setReport(null);
-    try {
+    setReportB(null);
+
+    const postScout = async (t: string, includeOur: boolean) => {
       const response = await fetch('/api/scout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamName, ourTeamName: ourTeamName.trim() || undefined, game: selectedGame.toLowerCase() }),
+        body: JSON.stringify({
+          teamName: t,
+          ourTeamName: includeOur ? (our || undefined) : undefined,
+          game: game.toLowerCase(),
+          limit: limitN,
+          timeframeDays: daysN || undefined,
+        }),
       });
+
       const data = await response.json();
-      setReport(data);
-    } catch (err) {
+      if (!response.ok) {
+        const message = data?.error || 'Failed to generate report';
+        const suggestions = (data?.suggestions as TeamSuggestion[] | undefined) || undefined;
+        throw { message, suggestions, query: t };
+      }
+      return data as ScoutingReport;
+    };
+
+    try {
+      if (compare) {
+        const [a, b] = await Promise.all([
+          postScout(team, false),
+          postScout(teamB, false),
+        ]);
+        setReport(a);
+        setReportB(b);
+
+        const share = buildShareUrl({ game, team, limit: limitN, timeframeDays: daysN, compareMode: true, teamB });
+        window.history.replaceState({}, '', share);
+      } else {
+        const a = await postScout(team, true);
+        setReport(a);
+
+        const share = buildShareUrl({ game, team, ourTeam: our || undefined, limit: limitN, timeframeDays: daysN });
+        window.history.replaceState({}, '', share);
+      }
+    } catch (err: any) {
+      const message = err?.message || 'Error scouting team';
+      const suggestions = err?.suggestions as TeamSuggestion[] | undefined;
+      const query = typeof err?.query === 'string' ? err.query : undefined;
+      setError({ message: query ? `${message}` : message, suggestions });
       console.error('Error scouting team:', err);
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (hydratedFromUrl) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const gameParam = params.get('game');
+    const teamParam = params.get('team');
+    const ourParam = params.get('our');
+    const limitParam = params.get('limit');
+    const daysParam = params.get('days');
+    const compareParam = params.get('compare');
+    const teamBParam = params.get('teamB');
+
+    const gameFromUrl: 'LOL' | 'VALORANT' | undefined = gameParam === 'lol' ? 'LOL' : gameParam === 'valorant' ? 'VALORANT' : undefined;
+    if (gameFromUrl) setSelectedGame(gameFromUrl);
+
+    if (limitParam) {
+      const n = parseInt(limitParam, 10);
+      if (Number.isFinite(n) && n > 0) setLimit(Math.min(50, n));
+    }
+    if (daysParam) {
+      const n = parseInt(daysParam, 10);
+      if (Number.isFinite(n) && n > 0) setTimeframeDays(Math.min(365, n));
+    }
+
+    if (typeof compareParam === 'string' && compareParam === '1') {
+      setCompareMode(true);
+    }
+
+    if (typeof teamParam === 'string' && teamParam.trim()) setTeamName(teamParam);
+    if (typeof ourParam === 'string') setOurTeamName(ourParam);
+    if (typeof teamBParam === 'string') setTeamNameB(teamBParam);
+
+    setHydratedFromUrl(true);
+
+    if (teamParam && teamParam.trim()) {
+      void runScout({
+        team: teamParam,
+        ourTeam: ourParam || undefined,
+        game: gameFromUrl,
+        limit: limitParam ? parseInt(limitParam, 10) : undefined,
+        timeframeDays: daysParam ? parseInt(daysParam, 10) : undefined,
+        compareMode: compareParam === '1',
+        teamB: teamBParam || undefined,
+      });
+    }
+  }, [hydratedFromUrl]);
+
+  const handleDownloadPdf = (r: ScoutingReport) => {
+    const teamNameEncoded = encodeURIComponent(r.opponentName);
+    const gameParam = (r.game || selectedGame).toLowerCase();
+    const params = new URLSearchParams({ game: gameParam });
+    params.set('limit', String(limit));
+    if (timeframeDays) params.set('timeframeDays', String(timeframeDays));
+    if (r.ourTeamName) {
+      params.set('ourTeamName', r.ourTeamName);
+    }
+    window.location.href = `/api/scout/name/${teamNameEncoded}/pdf?${params.toString()}`;
+  };
+
+  const handleScout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runScout();
+  };
+
   return (
-    <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f9f9f9', minHeight: '100vh' }}>
+    <div style={{ padding: '20px', maxWidth: compareMode ? '1180px' : '800px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f9f9f9', minHeight: '100vh', lineHeight: 1.4 }}>
       <header style={{ textAlign: 'center', marginBottom: '40px' }}>
         <h1 style={{ color: '#333' }}>ScoutMaster 3000 🎯</h1>
         <p style={{ color: '#666' }}>One-click opponent scouting for elite coaches.</p>
@@ -134,6 +313,115 @@ function App() {
             </label>
           </div>
 
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '10px',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#ffffff',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+          }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: 700 }}>Guided demo</span>
+              <select
+                aria-label="Guided demo team"
+                defaultValue=""
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setTeamName(v);
+                  setError(null);
+                }}
+                style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ccc', minWidth: 200 }}
+              >
+                <option value="">Try an example team…</option>
+                {demoTeams[selectedGame].map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={() => {
+                const choices = demoTeams[selectedGame];
+                const pick = choices[Math.floor(Math.random() * choices.length)];
+                setTeamName(pick);
+                setError(null);
+              }}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+            >
+              Random example
+            </button>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={compareMode}
+                onChange={(e) => {
+                  setCompareMode(e.target.checked);
+                  setReport(null);
+                  setReportB(null);
+                  setError(null);
+                }}
+              />
+              <span style={{ fontWeight: 800, color: '#333' }}>Compare</span>
+              <span style={{ fontSize: '0.82rem', color: '#666' }}>(A vs B)</span>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: 700 }}>Series</span>
+              <select
+                aria-label="Series limit"
+                value={limit}
+                onChange={(e) => setLimit(parseInt(e.target.value, 10))}
+                style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ccc' }}
+              >
+                {[5, 10, 20, 30].map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: 700 }}>Time window</span>
+              <select
+                aria-label="Time window"
+                value={timeframeDays}
+                onChange={(e) => setTimeframeDays(parseInt(e.target.value, 10))}
+                style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ccc' }}
+              >
+                {[14, 30, 60, 90, 180].map((n) => (
+                  <option key={n} value={n}>Last {n}d</option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              type="button"
+              onClick={async () => {
+                const url = buildShareUrl({
+                  game: selectedGame,
+                  team: teamName,
+                  ourTeam: compareMode ? undefined : (ourTeamName.trim() || undefined),
+                  limit,
+                  timeframeDays,
+                  compareMode,
+                  teamB: compareMode ? (teamNameB.trim() || undefined) : undefined,
+                });
+                await copyToClipboard(url);
+              }}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #007bff', background: 'white', color: '#007bff', cursor: 'pointer', fontWeight: 800 }}
+              title="Copies a link that re-hydrates the form and auto-runs the report"
+            >
+              Copy share link
+            </button>
+          </div>
+
           <form onSubmit={handleScout} style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <input
               type="text"
@@ -141,15 +429,37 @@ function App() {
               onChange={(e) => setTeamName(e.target.value)}
               placeholder={selectedGame === 'VALORANT' ? 'Enter VALORANT team name…' : 'Enter LoL team name…'}
               list="team-suggestions"
-              style={{ padding: '12px', width: '300px', borderRadius: '4px', border: '1px solid #ccc' }}
+              aria-label="Opponent team name"
+              style={{ padding: '12px', width: compareMode ? '260px' : '300px', borderRadius: '8px', border: '1px solid #ccc' }}
             />
-            <input
-              type="text"
-              value={ourTeamName}
-              onChange={(e) => setOurTeamName(e.target.value)}
-              placeholder="(Optional) Your team name…"
-              style={{ padding: '12px', width: '240px', borderRadius: '4px', border: '1px solid #ccc' }}
-            />
+
+            {compareMode ? (
+              <>
+                <input
+                  type="text"
+                  value={teamNameB}
+                  onChange={(e) => setTeamNameB(e.target.value)}
+                  placeholder={selectedGame === 'VALORANT' ? 'Compare vs (VAL)…' : 'Compare vs (LoL)…'}
+                  list="team-suggestions-b"
+                  aria-label="Opponent B team name"
+                  style={{ padding: '12px', width: '260px', borderRadius: '8px', border: '1px solid #ccc' }}
+                />
+                <datalist id="team-suggestions-b">
+                  {suggestionsB.map((s) => (
+                    <option key={s.id} value={s.name} />
+                  ))}
+                </datalist>
+              </>
+            ) : (
+              <input
+                type="text"
+                value={ourTeamName}
+                onChange={(e) => setOurTeamName(e.target.value)}
+                placeholder="(Optional) Your team name…"
+                aria-label="Your team name (optional)"
+                style={{ padding: '12px', width: '240px', borderRadius: '8px', border: '1px solid #ccc' }}
+              />
+            )}
             <datalist id="team-suggestions">
               {suggestions.map((s) => (
                 <option key={s.id} value={s.name} />
@@ -160,7 +470,7 @@ function App() {
               disabled={loading}
               style={{
                 padding: '12px 24px',
-                borderRadius: '4px',
+                borderRadius: '8px',
                 border: 'none',
                 backgroundColor: '#007bff',
                 color: 'white',
@@ -174,7 +484,177 @@ function App() {
         </div>
       </section>
 
-      {report && (
+      {error && (
+        <section style={{ backgroundColor: 'white', padding: '18px 20px', borderRadius: '10px', border: '1px solid #f1d4d7', marginBottom: '20px' }}>
+          <div style={{ fontWeight: 900, color: '#721c24' }}>Couldn’t generate a report</div>
+          <div style={{ marginTop: '6px', color: '#333' }}>{error.message}</div>
+
+          {error.suggestions && error.suggestions.length > 0 ? (
+            <div style={{ marginTop: '12px' }}>
+              <div style={{ fontSize: '0.9rem', color: '#666' }}>Try one of these teams:</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                {error.suggestions.slice(0, 10).map((s) => (
+                  compareMode ? (
+                    <div key={s.id} style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        onClick={() => { setTeamName(s.name); setError(null); }}
+                        style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                        title="Use as Opponent A"
+                      >
+                        {s.name} (A)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setTeamNameB(s.name); setError(null); }}
+                        style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                        title="Use as Opponent B"
+                      >
+                        (B)
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => { setTeamName(s.name); setError(null); }}
+                      style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      {s.name}
+                    </button>
+                  )
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#666' }}>
+              Tip: start typing and pick from the autocomplete list.
+            </div>
+          )}
+
+          <div style={{ marginTop: '12px' }}>
+            <button
+              type="button"
+              onClick={() => setError(null)}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 800 }}
+            >
+              Dismiss
+            </button>
+          </div>
+        </section>
+      )}
+
+      {compareMode && report && reportB ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <section style={{ backgroundColor: 'white', padding: '18px 20px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
+            <h2 style={{ margin: 0, color: '#333' }}>Compare View</h2>
+            <div style={{ marginTop: '6px', color: '#666', fontSize: '0.9rem' }}>
+              Side-by-side opponent snapshots (same game, limit, and time window). Compare mode generates opponent-only reports for both teams.
+            </div>
+          </section>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+            {[
+              { label: 'Opponent A', r: report },
+              { label: 'Opponent B', r: reportB },
+            ].map(({ label, r }) => (
+              <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {r.isMockData && (
+                  <div style={{
+                    backgroundColor: '#fff3cd',
+                    color: '#856404',
+                    padding: '12px',
+                    borderRadius: '10px',
+                    border: '1px solid #ffeeba',
+                    textAlign: 'center',
+                    fontWeight: 'bold'
+                  }}>
+                    ⚠️ Note: Showing demo/mock data.
+                    <div style={{ marginTop: '6px', fontWeight: 600, fontSize: '0.9rem' }}>
+                      {r.mockReason === 'MissingApiKey'
+                        ? 'Reason: GRID_API_KEY is not configured in this environment.'
+                        : r.mockReason === 'ApiError'
+                          ? 'Reason: GRID API request failed (rate limit/network/etc.).'
+                          : 'Reason: Team was not found or data was unavailable.'}
+                    </div>
+                  </div>
+                )}
+
+                <section style={{ backgroundColor: 'white', padding: '18px 20px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
+                  <h2 style={{ margin: 0, color: '#333' }}>{label}: {r.opponentName}</h2>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '12px', marginTop: '12px' }}>
+                    <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '10px' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>Win Rate</div>
+                      <div style={{ fontSize: '1.6rem', fontWeight: 900, color: r.winProbability > 50 ? '#28a745' : '#dc3545' }}>{r.winProbability}%</div>
+                    </div>
+                    <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '10px' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>Avg. Score</div>
+                      <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#333' }}>{r.avgScore}</div>
+                    </div>
+                    <div style={{ textAlign: 'center', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '10px' }}>
+                      <div style={{ fontSize: '0.8rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px' }}>Matches</div>
+                      <div style={{ fontSize: '1.6rem', fontWeight: 900, color: '#333' }}>{r.matchesAnalyzed}</div>
+                    </div>
+                  </div>
+
+                  {r.evidence && (
+                    <div style={{ marginTop: '12px', fontSize: '0.9rem', color: '#666' }}>
+                      <strong>Window:</strong> {formatDate(r.evidence.startTime)} → {formatDate(r.evidence.endTime)} • <strong>Confidence:</strong> {r.evidence.winRateConfidence}
+                    </div>
+                  )}
+                </section>
+
+                <section style={{ backgroundColor: 'white', padding: '18px 20px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
+                  <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>📊 Maps & Tempo</h3>
+                  <div style={{ margin: '8px 0 0 0', color: '#333' }}>
+                    <strong>Aggression:</strong>{' '}
+                    <span style={{
+                      marginLeft: '8px',
+                      padding: '3px 10px',
+                      borderRadius: '14px',
+                      fontSize: '0.85rem',
+                      fontWeight: 800,
+                      backgroundColor: r.aggression === 'High' ? '#f8d7da' : r.aggression === 'Medium' ? '#fff3cd' : '#d4edda',
+                      color: r.aggression === 'High' ? '#721c24' : r.aggression === 'Medium' ? '#856404' : '#155724'
+                    }}>{r.aggression}</span>
+                  </div>
+
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '12px' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Map</th>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Played</th>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Win</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {r.topMaps.slice(0, 5).map((m, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #f1f1f1' }}>
+                          <td style={{ padding: '10px 8px', fontWeight: 800 }}>{m.mapName}</td>
+                          <td style={{ padding: '10px 8px' }}>{m.matchesPlayed}</td>
+                          <td style={{ padding: '10px 8px', fontWeight: 800, color: m.winRate >= 0.5 ? '#28a745' : '#dc3545' }}>{Math.round(m.winRate * 100)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+
+                <section style={{ backgroundColor: '#007bff', color: 'white', padding: '18px 20px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
+                  <h3 style={{ marginTop: 0, borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '10px' }}>🎯 How to Win</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                    {r.howToWin.slice(0, 4).map((tip, i) => (
+                      <div key={i} style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ fontWeight: 900, marginBottom: '4px' }}>{tip.insight}</div>
+                        <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', fontStyle: 'italic' }}>Evidence: {tip.evidence}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : report ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {report.isMockData && (
             <div style={{ 
@@ -186,7 +666,14 @@ function App() {
               textAlign: 'center',
               fontWeight: 'bold'
             }}>
-              ⚠️ Note: Showing demo/mock data because the GRID API is currently unavailable or the team was not found.
+              ⚠️ Note: Showing demo/mock data.
+              <div style={{ marginTop: '6px', fontWeight: 600, fontSize: '0.9rem' }}>
+                {report.mockReason === 'MissingApiKey'
+                  ? 'Reason: GRID_API_KEY is not configured in this environment.'
+                  : report.mockReason === 'ApiError'
+                    ? 'Reason: GRID API request failed (rate limit/network/etc.).'
+                    : 'Reason: Team was not found or data was unavailable.'}
+              </div>
             </div>
           )}
           {/* 1. Team Snapshot */}
@@ -196,7 +683,7 @@ function App() {
                 {report.ourTeamName ? `Matchup: ${report.ourTeamName} vs ${report.opponentName}` : `Team Snapshot: ${report.opponentName}`}
               </h2>
               <button
-                onClick={handleDownloadPdf}
+                onClick={() => handleDownloadPdf(report)}
                 style={{
                   padding: '8px 16px',
                   borderRadius: '4px',
@@ -599,7 +1086,7 @@ function App() {
             </section>
           </div>
         </div>
-      )}
+      ) : null}
 
       <footer style={{ marginTop: '50px', textAlign: 'center', fontSize: '0.8rem', color: '#999' }}>
         {health && <span>API Status: {health.status}</span>}

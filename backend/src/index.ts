@@ -5,7 +5,8 @@ import {
   generateScoutingReportByName, 
   generateScoutingReportById,
   generateMatchupScoutingReportByName,
-  searchTeams
+  searchTeams,
+  isTeamNotFoundError
 } from './scoutingService.js';
 import { generatePdf } from './utils/pdfGenerator.js';
 
@@ -88,7 +89,13 @@ app.get('/api/scout/:teamId/pdf', async (req, res) => {
 });
 
 app.post('/api/scout', async (req, res) => {
-  const { teamName, ourTeamName, game } = req.body as { teamName?: string; ourTeamName?: string; game?: string };
+  const { teamName, ourTeamName, game, limit, timeframeDays } = req.body as {
+    teamName?: string;
+    ourTeamName?: string;
+    game?: string;
+    limit?: number;
+    timeframeDays?: number;
+  };
   if (!teamName) {
     return res.status(400).json({ error: 'teamName is required' });
   }
@@ -98,11 +105,20 @@ app.post('/api/scout', async (req, res) => {
     : undefined;
 
   try {
+    const limitNum = Number.isFinite(limit as any) && (limit as any) > 0 ? Math.min(50, Math.floor(limit as any)) : 10;
+    const timeframeNum = Number.isFinite(timeframeDays as any) && (timeframeDays as any) > 0 ? Math.min(365, Math.floor(timeframeDays as any)) : undefined;
+
     const report = (ourTeamName && ourTeamName.trim() !== '')
-      ? await generateMatchupScoutingReportByName(ourTeamName, teamName, 10, gameEnum as any)
-      : await generateScoutingReportByName(teamName, 10, gameEnum as any);
+      ? await generateMatchupScoutingReportByName(ourTeamName, teamName, limitNum, gameEnum as any, timeframeNum)
+      : await generateScoutingReportByName(teamName, limitNum, gameEnum as any, timeframeNum);
     res.json(report);
   } catch (error) {
+    if (isTeamNotFoundError(error)) {
+      return res.status(404).json({
+        error: `${error.which === 'our' ? 'Your team' : 'Opponent team'} not found: ${error.query}`,
+        suggestions: error.suggestions
+      });
+    }
     console.error('Error generating report:', error);
     res.status(500).json({ error: 'Failed to generate scouting report' });
   }
@@ -117,20 +133,27 @@ app.get('/api/scout/name/:teamName/pdf', async (req, res) => {
   const limit = parseInt(req.query.limit as string) || 10;
   const game = (req.query.game as string | undefined) || undefined;
   const ourTeamName = (req.query.ourTeamName as string | undefined) || undefined;
+  const timeframeDays = req.query.timeframeDays ? parseInt(req.query.timeframeDays as string) : undefined;
   const gameEnum = (typeof game === 'string' && game.toLowerCase() === 'lol') ? 'LOL'
     : (typeof game === 'string' && game.toLowerCase() === 'valorant') ? 'VALORANT'
     : undefined;
 
   try {
     const report = (ourTeamName && ourTeamName.trim() !== '')
-      ? await generateMatchupScoutingReportByName(ourTeamName, teamName, limit, gameEnum as any)
-      : await generateScoutingReportByName(teamName, limit, gameEnum as any);
+      ? await generateMatchupScoutingReportByName(ourTeamName, teamName, limit, gameEnum as any, timeframeDays)
+      : await generateScoutingReportByName(teamName, limit, gameEnum as any, timeframeDays);
     const pdfBuffer = await generatePdf(report);
 
     res.contentType('application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="scouting-report-${teamName.replace(/\s+/g, '-')}.pdf"`);
     res.send(Buffer.from(pdfBuffer));
   } catch (error) {
+    if (isTeamNotFoundError(error)) {
+      return res.status(404).json({
+        error: `${error.which === 'our' ? 'Your team' : 'Opponent team'} not found: ${error.query}`,
+        suggestions: error.suggestions
+      });
+    }
     console.error(`Error generating PDF for teamName ${teamName}:`, error);
     res.status(500).json({ error: 'Failed to generate PDF report' });
   }

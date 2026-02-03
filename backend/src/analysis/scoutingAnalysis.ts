@@ -68,6 +68,27 @@ export function calculateWinRateTrend(
 }
 
 /**
+ * Filters matches to a trailing time window of `timeframeDays` from `now`.
+ *
+ * Notes:
+ * - If `timeframeDays` is undefined/null, returns the original array.
+ * - If a match has an invalid/missing `startTime`, it is kept (best-effort).
+ */
+export function filterMatchesByTimeframe(
+  matches: Match[],
+  timeframeDays?: number,
+  now: number = Date.now()
+): Match[] {
+  if (!timeframeDays || !Number.isFinite(timeframeDays) || timeframeDays <= 0) return matches;
+  const cutoff = now - timeframeDays * 24 * 60 * 60 * 1000;
+  return matches.filter(m => {
+    const t = new Date(m.startTime).getTime();
+    if (!Number.isFinite(t)) return true;
+    return t >= cutoff;
+  });
+}
+
+/**
  * Helper to find a team in a match by ID or Name.
  */
 function findTeam(match: Match, teamRef: string) {

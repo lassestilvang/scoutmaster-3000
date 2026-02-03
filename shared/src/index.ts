@@ -37,6 +37,14 @@ export interface ScoutingReport {
   draftStats?: DraftStats[];
   compositions?: CompositionStats[];
   isMockData?: boolean;
+  /**
+   * When `isMockData` is true, this provides a lightweight reason code for better UI messaging.
+   */
+  mockReason?: 'TeamNotFound' | 'MissingApiKey' | 'ApiError';
+  /**
+   * Optional team suggestions (typically populated when a team name could not be resolved).
+   */
+  suggestedTeams?: Array<{ id: string; name: string }>;
 }
 
 export * from './models.js';
