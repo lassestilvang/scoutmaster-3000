@@ -1,5 +1,5 @@
 import { GridTeam, GridSeriesState, GridSeriesTeamState } from './gridGraphqlClient.js';
-import { Team, Match, TeamResult, Player, DraftStats, CompositionStats, CompositionKind } from '@scoutmaster-3000/shared';
+import { Team, Match, TeamResult, Player, DraftStats, CompositionStats, CompositionKind, MapPlan } from '@scoutmaster-3000/shared';
 
 /**
  * Normalizes a raw GRID Series State into a list of Match models.
@@ -142,6 +142,84 @@ export function normalizeCompositionStats(seriesStates: GridSeriesState[], teamI
       winRate: v.seriesCount > 0 ? v.wins / v.seriesCount : 0,
     }))
     .sort((a, b) => b.pickCount - a.pickCount);
+}
+
+/**
+ * Builds a per-map plan for a team.
+ *
+ * For VALORANT, this primarily surfaces "default" agent compositions per map.
+ * Note: round-by-round site-level data (A/B hits, etc.) is not included in the
+ * currently used GRID query, so `siteTendenciesAvailable` defaults to `false`.
+ */
+export function normalizeMapPlans(seriesStates: GridSeriesState[], teamId: string): MapPlan[] {
+  const mapOutcomes: Record<string, { played: number; wins: number }> = {};
+  const mapComps: Record<
+    string,
+    Record<string, { members: string[]; played: number; wins: number }>
+  > = {};
+
+  const toKind = (t?: string): CompositionKind => {
+    const upper = (t || '').toUpperCase();
+    if (upper === 'CHAMPION') return 'CHAMPION';
+    if (upper === 'AGENT') return 'AGENT';
+    return 'UNKNOWN';
+  };
+
+  for (const ss of seriesStates) {
+    const actions = ss.draftActions || [];
+
+    // Build a best-effort agent comp for the team in this series (if provided).
+    const agentPicks = new Set<string>();
+    for (const action of actions) {
+      if (action.type !== 'PICK') continue;
+      if (action.drafter?.id !== teamId) continue;
+      const name = action.draftable?.name;
+      if (!name) continue;
+      if (toKind(action.draftable?.type) !== 'AGENT') continue;
+      agentPicks.add(name);
+    }
+    const agentMembers = [...agentPicks].sort((a, b) => a.localeCompare(b));
+    const agentKey = agentMembers.length > 0 ? `AGENT:${agentMembers.join('|')}` : null;
+
+    for (const game of ss.games || []) {
+      const mapName = game.map?.name || 'Unknown';
+      const teamWonGame = game.teams.find(t => t.id === teamId)?.won || false;
+
+      if (!mapOutcomes[mapName]) mapOutcomes[mapName] = { played: 0, wins: 0 };
+      mapOutcomes[mapName].played++;
+      if (teamWonGame) mapOutcomes[mapName].wins++;
+
+      if (!agentKey) continue;
+      if (!mapComps[mapName]) mapComps[mapName] = {};
+      if (!mapComps[mapName][agentKey]) {
+        mapComps[mapName][agentKey] = { members: agentMembers, played: 0, wins: 0 };
+      }
+      mapComps[mapName][agentKey].played++;
+      if (teamWonGame) mapComps[mapName][agentKey].wins++;
+    }
+  }
+
+  return Object.entries(mapOutcomes)
+    .map(([mapName, o]): MapPlan => {
+      const compsForMap = mapComps[mapName] || {};
+      const commonCompositions: CompositionStats[] = Object.values(compsForMap)
+        .map(c => ({
+          kind: 'AGENT' as const,
+          members: c.members,
+          pickCount: c.played,
+          winRate: c.played > 0 ? c.wins / c.played : 0,
+        }))
+        .sort((a, b) => b.pickCount - a.pickCount);
+
+      return {
+        mapName,
+        matchesPlayed: o.played,
+        winRate: o.played > 0 ? o.wins / o.played : 0,
+        commonCompositions: commonCompositions.length > 0 ? commonCompositions : undefined,
+        siteTendenciesAvailable: false,
+      };
+    })
+    .sort((a, b) => b.matchesPlayed - a.matchesPlayed);
 }
 
 // Since GRID responses often group things differently, 

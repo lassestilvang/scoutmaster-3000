@@ -301,6 +301,63 @@ function App() {
             </div>
           </section>
 
+          {/* 2.75 Default Map Plan (VAL) */}
+          {selectedGame === 'VALORANT' && (
+            <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+              <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🗺️ Default Map Plan (VAL)</h3>
+              <p style={{ marginTop: 0, color: '#666', fontSize: '0.9rem' }}>
+                Note: Site-level tendencies (A/B hits, first-contact timing, retakes) require round-by-round data. The current feed used for this demo
+                does not include that for all matches, so this section shows map-level performance and common agent comps per map.
+              </p>
+
+              {report.mapPlans && report.mapPlans.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {report.mapPlans.slice(0, 6).map((mp, i) => {
+                    const defaultComp = mp.commonCompositions?.[0];
+                    const variations = mp.commonCompositions?.slice(1, 3) || [];
+                    return (
+                      <div key={i} style={{ border: '1px solid #eee', borderRadius: '8px', padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px' }}>
+                          <div style={{ fontWeight: 700, color: '#333' }}>{mp.mapName}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                            Played {mp.matchesPlayed}× • Win rate {Math.round(mp.winRate * 100)}%
+                          </div>
+                        </div>
+
+                        {defaultComp ? (
+                          <div style={{ marginTop: '8px' }}>
+                            <div style={{ fontSize: '0.9rem' }}>
+                              <strong>Default comp:</strong> {defaultComp.members.join(', ')}
+                              <span style={{ color: '#666' }}> (seen {defaultComp.pickCount}×)</span>
+                            </div>
+                            {variations.length > 0 && (
+                              <div style={{ marginTop: '6px', fontSize: '0.85rem', color: '#666' }}>
+                                <strong>Variations:</strong>
+                                <ul style={{ margin: '6px 0 0 18px' }}>
+                                  {variations.map((v, vi) => (
+                                    <li key={vi}>
+                                      {v.members.join(', ')} (seen {v.pickCount}×)
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: '8px', fontStyle: 'italic', color: '#666' }}>
+                            No agent composition data available for this map in the current dataset.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p style={{ fontStyle: 'italic', color: '#666' }}>No map plan data available for this team in the current dataset.</p>
+              )}
+            </section>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
             {/* 3. Player Watchlist */}
             <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>

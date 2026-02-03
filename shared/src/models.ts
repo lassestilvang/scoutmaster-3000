@@ -37,6 +37,21 @@ export interface MapStats {
   winRate: number; // 0 to 1
 }
 
+export interface MapPlan {
+  mapName: string;
+  matchesPlayed: number;
+  winRate: number; // 0 to 1
+  /**
+   * Common compositions observed on this map (e.g., VAL agent comps).
+   * Optional because the underlying feed may not provide draft/composition data.
+   */
+  commonCompositions?: CompositionStats[];
+  /**
+   * Whether round-by-round site data (A/B hits, etc.) was available to compute site tendencies.
+   */
+  siteTendenciesAvailable?: boolean;
+}
+
 export interface DraftStats {
   heroOrMapName: string;
   pickCount: number;

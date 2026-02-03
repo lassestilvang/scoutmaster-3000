@@ -1,5 +1,5 @@
 import { gridGraphqlClient } from './data/gridGraphqlClient.js';
-import { normalizeCompositionStats, normalizeDraftStats, normalizeSeriesState } from './data/normalizer.js';
+import { normalizeCompositionStats, normalizeDraftStats, normalizeMapPlans, normalizeSeriesState } from './data/normalizer.js';
 import { ScoutingReport, Match } from '@scoutmaster-3000/shared';
 import { 
   calculateWinRate, 
@@ -18,7 +18,8 @@ async function generateReport(
   matches: Match[],
   teamRef: string,
   fallbackName: string,
-  extras?: Pick<ScoutingReport, 'draftStats' | 'compositions'>
+  extras?: Pick<ScoutingReport, 'draftStats' | 'compositions' | 'mapPlans'>,
+  game?: 'LOL' | 'VALORANT'
 ): Promise<ScoutingReport> {
   // Try to find the actual team name from the matches if possible
   let actualName = fallbackName;
@@ -40,10 +41,12 @@ async function generateReport(
 
   return {
     opponentName: actualName,
+    game,
     winProbability,
     keyInsights: insights,
     howToWin: howToWin,
     topMaps,
+    mapPlans: extras?.mapPlans,
     roster,
     aggression,
     avgScore,
@@ -60,7 +63,7 @@ export async function generateScoutingReportByName(teamName: string, limit: numb
     const teams = await gridGraphqlClient.findTeamsByName(teamName, 1, game);
     if (teams.length === 0) {
       console.error(`Error generating scouting report from real data, falling back to mock: Team "${teamName}" not found in GRID Central Data.`);
-      return generateMockReport(teamName);
+      return generateMockReport(teamName, game);
     }
 
     const teamId = teams[0].id;
@@ -73,11 +76,12 @@ export async function generateScoutingReportByName(teamName: string, limit: numb
     const allMatches: Match[] = seriesStates.flatMap(normalizeSeriesState);
     const draftStats = normalizeDraftStats(seriesStates, teamId);
     const compositions = normalizeCompositionStats(seriesStates, teamId);
-    return generateReport(allMatches, teamId, actualTeamName, { draftStats, compositions });
+    const mapPlans = normalizeMapPlans(seriesStates, teamId);
+    return generateReport(allMatches, teamId, actualTeamName, { draftStats, compositions, mapPlans }, game);
   } catch (error) {
     console.error('Error generating scouting report from real data, falling back to mock:', (error as any).message);
     // If we have a real team name, use it in the mock report
-    return generateMockReport(teamName);
+    return generateMockReport(teamName, game);
   }
 }
 
@@ -90,7 +94,8 @@ export async function generateScoutingReportById(teamId: string, limit: number =
     const allMatches: Match[] = seriesStates.flatMap(normalizeSeriesState);
     const draftStats = normalizeDraftStats(seriesStates, teamId);
     const compositions = normalizeCompositionStats(seriesStates, teamId);
-    return generateReport(allMatches, teamId, `Team ${teamId}`, { draftStats, compositions });
+    const mapPlans = normalizeMapPlans(seriesStates, teamId);
+    return generateReport(allMatches, teamId, `Team ${teamId}`, { draftStats, compositions, mapPlans });
   } catch (error) {
     console.error(`Error generating report for teamId ${teamId}, falling back to mock:`, (error as any).message);
     return generateMockReport(`Team ${teamId}`);
@@ -100,10 +105,11 @@ export async function generateScoutingReportById(teamId: string, limit: number =
 /**
  * Generates a mock report for demo/fallback purposes.
  */
-function generateMockReport(teamName: string): ScoutingReport {
+function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT'): ScoutingReport {
   // Simple mock data for demo
   return {
     opponentName: teamName,
+    game,
     winProbability: 65,
     keyInsights: [
       `Aggression: Displays a high aggression profile based on scoring patterns.`,
@@ -117,6 +123,18 @@ function generateMockReport(teamName: string): ScoutingReport {
       { mapName: 'Mirage', matchesPlayed: 8, winRate: 0.75 },
       { mapName: 'Inferno', matchesPlayed: 5, winRate: 0.60 }
     ],
+    mapPlans: game === 'VALORANT' ? [
+      {
+        mapName: 'Ascent',
+        matchesPlayed: 6,
+        winRate: 0.67,
+        siteTendenciesAvailable: false,
+        commonCompositions: [
+          { kind: 'AGENT', members: ['Jett', 'Omen', 'Sova', 'Killjoy', 'Skye'], pickCount: 4, winRate: 0.75 },
+          { kind: 'AGENT', members: ['Raze', 'Brimstone', 'Sova', 'Cypher', 'Fade'], pickCount: 2, winRate: 0.50 },
+        ],
+      },
+    ] : undefined,
     roster: [
       { id: 'p1', name: 'MockPlayer1', teamId: 'mock' },
       { id: 'p2', name: 'MockPlayer2', teamId: 'mock' }

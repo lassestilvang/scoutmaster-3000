@@ -278,6 +278,45 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
         </div>
       </section>
 
+      ${report.game === 'VALORANT' ? `
+        <section>
+          <h3>🗺️ Default Map Plan (VAL)</h3>
+          <p style="margin-top: 0; color: #666; font-size: 0.9rem;">
+            Note: Site-level tendencies (A/B hits, first-contact timing, retakes) require round-by-round data. The current feed used for this demo
+            does not include that for all matches, so this section shows map-level performance and common agent comps per map.
+          </p>
+
+          ${report.mapPlans && report.mapPlans.length > 0 ? `
+            <table>
+              <thead>
+                <tr>
+                  <th>Map</th>
+                  <th>Played</th>
+                  <th>Win Rate</th>
+                  <th>Default Comp</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${report.mapPlans.slice(0, 6).map(mp => {
+                  const defaultComp = mp.commonCompositions?.[0];
+                  const defaultCompText = defaultComp ? `${defaultComp.members.join(', ')} (seen ${defaultComp.pickCount}×)` : '—';
+                  return `
+                    <tr>
+                      <td style="font-weight: bold;">${mp.mapName}</td>
+                      <td>${mp.matchesPlayed}</td>
+                      <td>${Math.round(mp.winRate * 100)}%</td>
+                      <td>${defaultCompText}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          ` : `
+            <p style="font-style: italic; color: #666;">No map plan data available for this team in the current dataset.</p>
+          `}
+        </section>
+      ` : ''}
+
       <div class="grid-2col">
         <section>
           <h3>👥 Player Watchlist</h3>
