@@ -21,13 +21,18 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/teams/search', async (req, res) => {
-  const { q } = req.query;
+  const { q, game } = req.query as { q?: string; game?: string };
   if (!q || typeof q !== 'string') {
     return res.json([]);
   }
 
+  // Normalize game param to expected enum
+  const gameEnum = (typeof game === 'string' && game.toLowerCase() === 'lol') ? 'LOL'
+    : (typeof game === 'string' && game.toLowerCase() === 'valorant') ? 'VALORANT'
+    : undefined;
+
   try {
-    const teams = await searchTeams(q);
+    const teams = await searchTeams(q, gameEnum as any);
     res.json(teams);
   } catch (error) {
     console.error('Error searching teams:', error);
@@ -82,13 +87,17 @@ app.get('/api/scout/:teamId/pdf', async (req, res) => {
 });
 
 app.post('/api/scout', async (req, res) => {
-  const { teamName } = req.body;
+  const { teamName, game } = req.body as { teamName?: string; game?: string };
   if (!teamName) {
     return res.status(400).json({ error: 'teamName is required' });
   }
 
+  const gameEnum = (typeof game === 'string' && game.toLowerCase() === 'lol') ? 'LOL'
+    : (typeof game === 'string' && game.toLowerCase() === 'valorant') ? 'VALORANT'
+    : undefined;
+
   try {
-    const report = await generateScoutingReportByName(teamName, 10);
+    const report = await generateScoutingReportByName(teamName, 10, gameEnum as any);
     res.json(report);
   } catch (error) {
     console.error('Error generating report:', error);
@@ -103,9 +112,13 @@ app.post('/api/scout', async (req, res) => {
 app.get('/api/scout/name/:teamName/pdf', async (req, res) => {
   const { teamName } = req.params;
   const limit = parseInt(req.query.limit as string) || 10;
+  const game = (req.query.game as string | undefined) || undefined;
+  const gameEnum = (typeof game === 'string' && game.toLowerCase() === 'lol') ? 'LOL'
+    : (typeof game === 'string' && game.toLowerCase() === 'valorant') ? 'VALORANT'
+    : undefined;
 
   try {
-    const report = await generateScoutingReportByName(teamName, limit);
+    const report = await generateScoutingReportByName(teamName, limit, gameEnum as any);
     const pdfBuffer = await generatePdf(report);
 
     res.contentType('application/pdf');

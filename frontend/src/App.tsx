@@ -8,6 +8,7 @@ function App() {
   const [report, setReport] = useState<ScoutingReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [selectedGame, setSelectedGame] = useState<'LOL' | 'VALORANT'>('VALORANT');
 
   useEffect(() => {
     fetch('/api/health')
@@ -23,19 +24,21 @@ function App() {
     }
 
     const timer = setTimeout(() => {
-      fetch(`/api/teams/search?q=${encodeURIComponent(teamName)}`)
+      const params = new URLSearchParams({ q: teamName, game: selectedGame.toLowerCase() });
+      fetch(`/api/teams/search?${params.toString()}`)
         .then((res) => res.json())
         .then((data) => setSuggestions(data))
         .catch((err) => console.error('Error fetching suggestions:', err));
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [teamName]);
+  }, [teamName, selectedGame]);
 
   const handleDownloadPdf = () => {
     if (!report) return;
     const teamNameEncoded = encodeURIComponent(report.opponentName);
-    window.location.href = `/api/scout/name/${teamNameEncoded}/pdf`;
+    const params = new URLSearchParams({ game: selectedGame.toLowerCase() });
+    window.location.href = `/api/scout/name/${teamNameEncoded}/pdf?${params.toString()}`;
   };
 
   const handleScout = async (e: React.FormEvent) => {
@@ -48,7 +51,7 @@ function App() {
       const response = await fetch('/api/scout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamName }),
+        body: JSON.stringify({ teamName, game: selectedGame.toLowerCase() }),
       });
       const data = await response.json();
       setReport(data);
@@ -67,36 +70,89 @@ function App() {
       </header>
 
       <section style={{ marginBottom: '40px' }}>
-        <form onSubmit={handleScout} style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
-          <input
-            type="text"
-            value={teamName}
-            onChange={(e) => setTeamName(e.target.value)}
-            placeholder="Enter opponent team name..."
-            list="team-suggestions"
-            style={{ padding: '12px', width: '300px', borderRadius: '4px', border: '1px solid #ccc' }}
-          />
-          <datalist id="team-suggestions">
-            {suggestions.map((s) => (
-              <option key={s.id} value={s.name} />
-            ))}
-          </datalist>
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              padding: '12px 24px',
-              borderRadius: '4px',
-              border: 'none',
-              backgroundColor: '#007bff',
-              color: 'white',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
-          >
-            {loading ? 'Analyzing...' : 'Generate Report'}
-          </button>
-        </form>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' }}>
+          <div style={{
+            display: 'flex',
+            gap: '16px',
+            alignItems: 'center',
+            background: '#ffffff',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+          }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="game"
+                value="VALORANT"
+                checked={selectedGame === 'VALORANT'}
+                onChange={() => setSelectedGame('VALORANT')}
+              />
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#ff4655" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                  <path d="M3 4l6.5 9.5L8 20 1 10z" />
+                  <path d="M23 4l-6.5 9.5L16 20l7-10z" />
+                </svg>
+                <span style={{ fontWeight: 600 }}>VALORANT</span>
+              </span>
+            </label>
+            <div style={{ width: 1, height: 22, background: '#e2e8f0' }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="game"
+                value="LOL"
+                checked={selectedGame === 'LOL'}
+                onChange={() => setSelectedGame('LOL')}
+              />
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+                  <defs>
+                    <linearGradient id="lolG" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stopColor="#c8a356" />
+                      <stop offset="100%" stopColor="#8b6b2f" />
+                    </linearGradient>
+                  </defs>
+                  <circle cx="12" cy="12" r="10" fill="url(#lolG)" />
+                  <text x="12" y="15" textAnchor="middle" fontSize="9" fontWeight="700" fill="#1a1a1a">LoL</text>
+                </svg>
+                <span style={{ fontWeight: 600 }}>League of Legends</span>
+              </span>
+            </label>
+          </div>
+
+          <form onSubmit={handleScout} style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <input
+              type="text"
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+              placeholder={selectedGame === 'VALORANT' ? 'Enter VALORANT team name…' : 'Enter LoL team name…'}
+              list="team-suggestions"
+              style={{ padding: '12px', width: '300px', borderRadius: '4px', border: '1px solid #ccc' }}
+            />
+            <datalist id="team-suggestions">
+              {suggestions.map((s) => (
+                <option key={s.id} value={s.name} />
+              ))}
+            </datalist>
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                padding: '12px 24px',
+                borderRadius: '4px',
+                border: 'none',
+                backgroundColor: '#007bff',
+                color: 'white',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }}
+            >
+              {loading ? 'Analyzing...' : 'Generate Report'}
+            </button>
+          </form>
+        </div>
       </section>
 
       {report && (

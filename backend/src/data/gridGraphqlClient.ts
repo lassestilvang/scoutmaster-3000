@@ -11,6 +11,9 @@ const GRID_API_KEY = process.env.GRID_API_KEY;
 export interface GridTeam {
   id: string;
   name: string;
+  // Optional fields for title/game info when available
+  title?: { code?: string; name?: string } | null;
+  titles?: Array<{ code?: string; name?: string }> | null;
 }
 
 export interface GridSeriesBase {
@@ -192,7 +195,8 @@ export class GridGraphqlClient {
   /**
    * Search for teams by name using Central Data
    */
-  async findTeamsByName(name: string, limit: number = 5): Promise<GridTeam[]> {
+  async findTeamsByName(name: string, limit: number = 5, game?: 'LOL' | 'VALORANT'): Promise<GridTeam[]> {
+    // Request potential title fields to enable filtering by game if supported by API
     const query = `
       query FindTeams($name: String!, $limit: Int!) {
         teams(filter: { name: { contains: $name } }, first: $limit) {
@@ -200,6 +204,8 @@ export class GridGraphqlClient {
             node {
               id
               name
+              title { name }
+              titles { name }
             }
           }
         }
@@ -210,7 +216,19 @@ export class GridGraphqlClient {
       query,
       { name, limit }
     );
-    return data.teams.edges.map(e => e.node);
+
+    const nodes = data.teams.edges.map(e => e.node);
+
+    if (!game) return nodes;
+
+    const matchers = (n: GridTeam) => {
+      const wanted = game === 'LOL' ? ['League of Legends', 'LOL', 'LoL'] : ['Valorant', 'VALORANT'];
+      const hasTitle = (t?: { name?: string } | null) => !!t && wanted.includes(t.name || '');
+      const anyTitles = Array.isArray(n.titles) && n.titles.some(t => hasTitle(t));
+      return hasTitle(n.title as any) || anyTitles;
+    };
+
+    return nodes.filter(matchers);
   }
 
   /**

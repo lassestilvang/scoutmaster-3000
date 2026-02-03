@@ -47,10 +47,10 @@ async function generateReport(matches: Match[], teamRef: string, fallbackName: s
   };
 }
 
-export async function generateScoutingReportByName(teamName: string, limit: number = 10): Promise<ScoutingReport> {
+export async function generateScoutingReportByName(teamName: string, limit: number = 10, game?: 'LOL' | 'VALORANT'): Promise<ScoutingReport> {
   try {
-    // 1. Find the team ID
-    const teams = await gridGraphqlClient.findTeamsByName(teamName, 1);
+    // 1. Find the team ID (optionally filter by game)
+    const teams = await gridGraphqlClient.findTeamsByName(teamName, 1, game);
     if (teams.length === 0) {
       console.error(`Error generating scouting report from real data, falling back to mock: Team "${teamName}" not found in GRID Central Data.`);
       return generateMockReport(teamName);
@@ -117,9 +117,9 @@ function generateMockReport(teamName: string): ScoutingReport {
   };
 }
 
-export async function searchTeams(query: string): Promise<Array<{ id: string, name: string }>> {
+export async function searchTeams(query: string, game?: 'LOL' | 'VALORANT'): Promise<Array<{ id: string, name: string }>> {
   try {
-    return await gridGraphqlClient.findTeamsByName(query, 10);
+    return await gridGraphqlClient.findTeamsByName(query, 10, game);
   } catch (error) {
     console.error('Error searching for teams:', error);
     return [];
