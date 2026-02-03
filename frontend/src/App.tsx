@@ -9,8 +9,12 @@ function App() {
   const [teamName, setTeamName] = useState('');
   const [ourTeamName, setOurTeamName] = useState('');
   const [suggestions, setSuggestions] = useState<TeamSuggestion[]>([]);
+  const [ourSuggestions, setOurSuggestions] = useState<TeamSuggestion[]>([]);
   const [teamNameB, setTeamNameB] = useState('');
   const [suggestionsB, setSuggestionsB] = useState<TeamSuggestion[]>([]);
+  const [committedTeamName, setCommittedTeamName] = useState<string | null>(null);
+  const [committedOurTeamName, setCommittedOurTeamName] = useState<string | null>(null);
+  const [committedTeamNameB, setCommittedTeamNameB] = useState<string | null>(null);
   const [report, setReport] = useState<ScoutingReport | null>(null);
   const [reportB, setReportB] = useState<ScoutingReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -75,13 +79,29 @@ function App() {
     return d.toLocaleDateString();
   };
 
+  const normalizeTeamName = (name: string) => name.trim().toLowerCase();
+  const isSameTeamName = (a: string, b: string) => {
+    const na = normalizeTeamName(a);
+    const nb = normalizeTeamName(b);
+    if (!na || !nb) return false;
+    return na === nb;
+  };
+
+  const isExactSuggestionMatch = (value: string, list: TeamSuggestion[]) =>
+    list.some((s) => isSameTeamName(s.name, value));
+
   const resetFormForGameChange = () => {
     setTeamName('');
     setOurTeamName('');
     setTeamNameB('');
     setCompareMode(false);
 
+    setCommittedTeamName(null);
+    setCommittedOurTeamName(null);
+    setCommittedTeamNameB(null);
+
     setSuggestions([]);
+    setOurSuggestions([]);
     setSuggestionsB([]);
     setReport(null);
     setReportB(null);
@@ -132,38 +152,90 @@ function App() {
   }, [selectedGame]);
 
   useEffect(() => {
-    if (teamName.length < 2) {
+    if (teamName.length < 2 || (committedTeamName && isSameTeamName(teamName, committedTeamName))) {
       setSuggestions([]);
       return;
     }
 
+    const ac = new AbortController();
     const timer = setTimeout(() => {
       const params = new URLSearchParams({ q: teamName, game: selectedGame.toLowerCase() });
-      fetch(`/api/teams/search?${params.toString()}`)
+      fetch(`/api/teams/search?${params.toString()}`, { signal: ac.signal })
         .then((res) => res.json())
-        .then((data) => setSuggestions(data))
-        .catch((err) => console.error('Error fetching suggestions:', err));
+        .then((data) => {
+          if (ac.signal.aborted) return;
+          setSuggestions(Array.isArray(data) ? data : []);
+        })
+        .catch((err) => {
+          if (err && err.name === 'AbortError') return;
+          console.error('Error fetching suggestions:', err);
+        });
     }, 300);
 
-    return () => clearTimeout(timer);
-  }, [teamName, selectedGame]);
+    return () => {
+      clearTimeout(timer);
+      ac.abort();
+    };
+  }, [teamName, selectedGame, committedTeamName]);
 
   useEffect(() => {
-    if (teamNameB.length < 2) {
+    if (teamNameB.length < 2 || (committedTeamNameB && isSameTeamName(teamNameB, committedTeamNameB))) {
       setSuggestionsB([]);
       return;
     }
 
+    const ac = new AbortController();
     const timer = setTimeout(() => {
       const params = new URLSearchParams({ q: teamNameB, game: selectedGame.toLowerCase() });
-      fetch(`/api/teams/search?${params.toString()}`)
+      fetch(`/api/teams/search?${params.toString()}`, { signal: ac.signal })
         .then((res) => res.json())
-        .then((data) => setSuggestionsB(data))
-        .catch((err) => console.error('Error fetching suggestions:', err));
+        .then((data) => {
+          if (ac.signal.aborted) return;
+          setSuggestionsB(Array.isArray(data) ? data : []);
+        })
+        .catch((err) => {
+          if (err && err.name === 'AbortError') return;
+          console.error('Error fetching suggestions:', err);
+        });
     }, 300);
 
-    return () => clearTimeout(timer);
-  }, [teamNameB, selectedGame]);
+    return () => {
+      clearTimeout(timer);
+      ac.abort();
+    };
+  }, [teamNameB, selectedGame, committedTeamNameB]);
+
+  useEffect(() => {
+    if (compareMode) {
+      setOurSuggestions([]);
+      return;
+    }
+
+    if (ourTeamName.length < 2 || (committedOurTeamName && isSameTeamName(ourTeamName, committedOurTeamName))) {
+      setOurSuggestions([]);
+      return;
+    }
+
+    const ac = new AbortController();
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams({ q: ourTeamName, game: selectedGame.toLowerCase() });
+      fetch(`/api/teams/search?${params.toString()}`, { signal: ac.signal })
+        .then((res) => res.json())
+        .then((data) => {
+          if (ac.signal.aborted) return;
+          setOurSuggestions(Array.isArray(data) ? data : []);
+        })
+        .catch((err) => {
+          if (err && err.name === 'AbortError') return;
+          console.error('Error fetching suggestions:', err);
+        });
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      ac.abort();
+    };
+  }, [ourTeamName, selectedGame, compareMode, committedOurTeamName]);
 
   const runScout = async (opts?: {
     team?: string;
@@ -180,6 +252,18 @@ function App() {
 
     if (!team) return;
     if (compare && !teamB) return;
+
+    if (compare) {
+      if (isSameTeamName(team, teamB)) {
+        setError({ message: 'Team A and Team B must be different.' });
+        return;
+      }
+    } else {
+      if (our && isSameTeamName(team, our)) {
+        setError({ message: 'Your team cannot be the same as the opponent.' });
+        return;
+      }
+    }
 
     setLoading(true);
     setError(null);
@@ -253,9 +337,25 @@ function App() {
       setCompareMode(true);
     }
 
-    if (typeof teamParam === 'string' && teamParam.trim()) setTeamName(teamParam);
-    if (typeof ourParam === 'string') setOurTeamName(ourParam);
-    if (typeof teamBParam === 'string') setTeamNameB(teamBParam);
+    if (typeof teamParam === 'string' && teamParam.trim()) {
+      setTeamName(teamParam);
+      setCommittedTeamName(teamParam);
+      setSuggestions([]);
+    }
+    if (typeof ourParam === 'string') {
+      setOurTeamName(ourParam);
+      if (ourParam.trim()) {
+        setCommittedOurTeamName(ourParam);
+        setOurSuggestions([]);
+      }
+    }
+    if (typeof teamBParam === 'string') {
+      setTeamNameB(teamBParam);
+      if (teamBParam.trim()) {
+        setCommittedTeamNameB(teamBParam);
+        setSuggestionsB([]);
+      }
+    }
 
     setHydratedFromUrl(true);
 
@@ -429,6 +529,8 @@ function App() {
                   const v = e.target.value;
                   if (!v) return;
                   setTeamName(v);
+                  setCommittedTeamName(v);
+                  setSuggestions([]);
                   setError(null);
                   if (!compareMode) void runScout({ team: v, game: selectedGame });
                 }}
@@ -453,6 +555,8 @@ function App() {
                 if (demoTeams.length === 0) return;
                 const pick = demoTeams[Math.floor(Math.random() * demoTeams.length)];
                 setTeamName(pick.name);
+                setCommittedTeamName(pick.name);
+                setSuggestions([]);
                 setError(null);
                 if (!compareMode) void runScout({ team: pick.name, game: selectedGame });
               }}
@@ -500,7 +604,16 @@ function App() {
             <input
               type="text"
               value={teamName}
-              onChange={(e) => setTeamName(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setTeamName(v);
+                if (isExactSuggestionMatch(v, suggestions)) {
+                  setCommittedTeamName(v);
+                  setSuggestions([]);
+                } else {
+                  setCommittedTeamName(null);
+                }
+              }}
               placeholder={selectedGame === 'VALORANT' ? 'Enter VALORANT team name…' : 'Enter LoL team name…'}
               list="team-suggestions"
               aria-label="Opponent team name"
@@ -512,32 +625,62 @@ function App() {
                 <input
                   type="text"
                   value={teamNameB}
-                  onChange={(e) => setTeamNameB(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setTeamNameB(v);
+                    if (isExactSuggestionMatch(v, suggestionsB)) {
+                      setCommittedTeamNameB(v);
+                      setSuggestionsB([]);
+                    } else {
+                      setCommittedTeamNameB(null);
+                    }
+                  }}
                   placeholder={selectedGame === 'VALORANT' ? 'Compare vs (VAL)…' : 'Compare vs (LoL)…'}
                   list="team-suggestions-b"
                   aria-label="Opponent B team name"
                   style={{ padding: '12px', width: '260px', borderRadius: '8px', border: '1px solid #ccc' }}
                 />
                 <datalist id="team-suggestions-b">
-                  {suggestionsB.map((s) => (
-                    <option key={s.id} value={s.name} />
-                  ))}
+                  {suggestionsB
+                    .filter((s) => !isSameTeamName(s.name, teamName))
+                    .map((s) => (
+                      <option key={s.id} value={s.name} />
+                    ))}
                 </datalist>
               </>
             ) : (
               <input
                 type="text"
                 value={ourTeamName}
-                onChange={(e) => setOurTeamName(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setOurTeamName(v);
+                  if (isExactSuggestionMatch(v, ourSuggestions)) {
+                    setCommittedOurTeamName(v);
+                    setOurSuggestions([]);
+                  } else {
+                    setCommittedOurTeamName(null);
+                  }
+                }}
                 placeholder="(Optional) Your team name…"
+                list="team-suggestions-our"
                 aria-label="Your team name (optional)"
                 style={{ padding: '12px', width: '240px', borderRadius: '8px', border: '1px solid #ccc' }}
               />
             )}
+            <datalist id="team-suggestions-our">
+              {ourSuggestions
+                .filter((s) => !isSameTeamName(s.name, teamName) && !isSameTeamName(s.name, teamNameB))
+                .map((s) => (
+                  <option key={s.id} value={s.name} />
+                ))}
+            </datalist>
             <datalist id="team-suggestions">
-              {suggestions.map((s) => (
-                <option key={s.id} value={s.name} />
-              ))}
+              {suggestions
+                .filter((s) => (compareMode ? !isSameTeamName(s.name, teamNameB) : !isSameTeamName(s.name, ourTeamName)))
+                .map((s) => (
+                  <option key={s.id} value={s.name} />
+                ))}
             </datalist>
             <button
               type="submit"
@@ -572,7 +715,12 @@ function App() {
                     <div key={s.id} style={{ display: 'flex', gap: '6px' }}>
                       <button
                         type="button"
-                        onClick={() => { setTeamName(s.name); setError(null); }}
+                        onClick={() => {
+                          setTeamName(s.name);
+                          setCommittedTeamName(s.name);
+                          setSuggestions([]);
+                          setError(null);
+                        }}
                         style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 700 }}
                         title="Use as Opponent A"
                       >
@@ -580,7 +728,12 @@ function App() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setTeamNameB(s.name); setError(null); }}
+                        onClick={() => {
+                          setTeamNameB(s.name);
+                          setCommittedTeamNameB(s.name);
+                          setSuggestionsB([]);
+                          setError(null);
+                        }}
                         style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 700 }}
                         title="Use as Opponent B"
                       >
@@ -591,7 +744,12 @@ function App() {
                     <button
                       key={s.id}
                       type="button"
-                      onClick={() => { setTeamName(s.name); setError(null); }}
+                      onClick={() => {
+                        setTeamName(s.name);
+                        setCommittedTeamName(s.name);
+                        setSuggestions([]);
+                        setError(null);
+                      }}
                       style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 700 }}
                     >
                       {s.name}

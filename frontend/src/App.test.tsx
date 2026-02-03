@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitForElementToBeRemoved } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 
@@ -29,6 +29,10 @@ describe('App', () => {
     window.history.replaceState({}, '', '/?foo=bar');
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('resets form inputs when changing game', async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -53,6 +57,143 @@ describe('App', () => {
     expect(screen.queryByLabelText('Opponent B team name')).toBeNull();
     expect(compare).not.toBeChecked();
     expect(window.location.search).toBe('');
+  });
+
+  it('adds autocomplete to the optional our-team input (and excludes the opponent team)', async () => {
+    const user = userEvent.setup();
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.startsWith('/api/health')) return createMockResponse({ status: 'ok', message: 'ok' });
+      if (url.startsWith('/api/demo-teams')) return createMockResponse({ teams: [] });
+
+      if (url.startsWith('/api/teams/search')) {
+        const u = new URL(url, 'http://localhost');
+        const q = u.searchParams.get('q');
+
+        if (q === 'Be') {
+          return createMockResponse([
+            { id: 't1', name: 'Alpha' },
+            { id: 't2', name: 'Beta' },
+          ]);
+        }
+        return createMockResponse([]);
+      }
+
+      if (url.startsWith('/api/scout')) return createMockResponse({});
+
+      throw new Error(`Unhandled fetch URL in test: ${url}`);
+    });
+
+    render(<App />);
+
+    await user.type(screen.getByLabelText('Opponent team name'), 'Alpha');
+
+    const ourInput = screen.getByLabelText('Your team name (optional)') as HTMLInputElement;
+    expect(ourInput.getAttribute('list')).toBe('team-suggestions-our');
+
+    await user.type(ourInput, 'Be');
+    await new Promise((r) => setTimeout(r, 450));
+
+    const list = document.getElementById('team-suggestions-our') as HTMLDataListElement;
+    const values = Array.from(list.querySelectorAll('option')).map((o) => (o as HTMLOptionElement).value);
+
+    expect(values).toContain('Beta');
+    expect(values).not.toContain('Alpha');
+  });
+
+  it('does not show suggestions again after selecting an autocomplete option', async () => {
+    const user = userEvent.setup();
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.startsWith('/api/health')) return createMockResponse({ status: 'ok', message: 'ok' });
+      if (url.startsWith('/api/demo-teams')) return createMockResponse({ teams: [] });
+
+      if (url.startsWith('/api/teams/search')) {
+        const u = new URL(url, 'http://localhost');
+        const q = u.searchParams.get('q');
+
+        if (q === 'Be') {
+          return createMockResponse([
+            { id: 't2', name: 'Beta' },
+          ]);
+        }
+        return createMockResponse([]);
+      }
+
+      if (url.startsWith('/api/scout')) return createMockResponse({});
+
+      throw new Error(`Unhandled fetch URL in test: ${url}`);
+    });
+
+    render(<App />);
+
+    const opponent = screen.getByLabelText('Opponent team name') as HTMLInputElement;
+    await user.type(opponent, 'Be');
+    await new Promise((r) => setTimeout(r, 450));
+
+    const list = document.getElementById('team-suggestions') as HTMLDataListElement;
+    const valuesBefore = Array.from(list.querySelectorAll('option')).map((o) => (o as HTMLOptionElement).value);
+    expect(valuesBefore).toContain('Beta');
+
+    // Simulate selecting the suggestion by completing the exact name (no debounce pause).
+    await user.type(opponent, 'ta');
+    expect(opponent).toHaveValue('Beta');
+
+    await waitFor(() => {
+      const valuesAfter = Array.from(list.querySelectorAll('option')).map((o) => (o as HTMLOptionElement).value);
+      expect(valuesAfter).toEqual([]);
+    });
+
+    // Wait longer than the debounce window; no new suggestions should reappear.
+    await new Promise((r) => setTimeout(r, 450));
+    const valuesLater = Array.from(list.querySelectorAll('option')).map((o) => (o as HTMLOptionElement).value);
+    expect(valuesLater).toEqual([]);
+
+    const searchCalls = fetchMock.mock.calls.filter(([input]) => {
+      const u = typeof input === 'string' ? input : input.toString();
+      return u.startsWith('/api/teams/search');
+    });
+    expect(searchCalls).toHaveLength(1);
+  });
+
+  it('prevents generating a report when our team equals the opponent team', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(screen.getByLabelText('Opponent team name'), 'SameTeam');
+    await user.type(screen.getByLabelText('Your team name (optional)'), 'SameTeam');
+
+    await user.click(screen.getByRole('button', { name: 'Generate Report' }));
+
+    expect(screen.getByText('Your team cannot be the same as the opponent.')).toBeInTheDocument();
+
+    const scoutCalls = fetchMock.mock.calls.filter(([input]) =>
+      typeof input === 'string' ? input.startsWith('/api/scout') : input.toString().startsWith('/api/scout')
+    );
+    expect(scoutCalls).toHaveLength(0);
+  });
+
+  it('prevents generating a compare report when team A equals team B', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('checkbox', { name: /compare/i }));
+
+    await user.type(screen.getByLabelText('Opponent team name'), 'SameTeam');
+    await user.type(screen.getByLabelText('Opponent B team name'), 'SameTeam');
+
+    await user.click(screen.getByRole('button', { name: 'Generate Report' }));
+
+    expect(screen.getByText('Team A and Team B must be different.')).toBeInTheDocument();
+
+    const scoutCalls = fetchMock.mock.calls.filter(([input]) =>
+      typeof input === 'string' ? input.startsWith('/api/scout') : input.toString().startsWith('/api/scout')
+    );
+    expect(scoutCalls).toHaveLength(0);
   });
 
   it('shows a centered spinner while generating (and keeps button text unchanged)', async () => {
