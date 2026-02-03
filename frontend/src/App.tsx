@@ -16,8 +16,6 @@ function App() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [selectedGame, setSelectedGame] = useState<'LOL' | 'VALORANT'>('VALORANT');
   const [compareMode, setCompareMode] = useState(false);
-  const [limit, setLimit] = useState(10);
-  const [timeframeDays, setTimeframeDays] = useState<number>(60);
   const [error, setError] = useState<{ message: string; suggestions?: TeamSuggestion[] } | null>(null);
   const [hydratedFromUrl, setHydratedFromUrl] = useState(false);
 
@@ -30,16 +28,12 @@ function App() {
     game: 'LOL' | 'VALORANT';
     team: string;
     ourTeam?: string;
-    limit: number;
-    timeframeDays?: number;
     compareMode?: boolean;
     teamB?: string;
   }) => {
     const params = new URLSearchParams();
     params.set('game', opts.game.toLowerCase());
     params.set('team', opts.team);
-    params.set('limit', String(opts.limit));
-    if (opts.timeframeDays) params.set('days', String(opts.timeframeDays));
     if (opts.ourTeam) params.set('our', opts.ourTeam);
     if (opts.compareMode) params.set('compare', '1');
     if (opts.teamB) params.set('teamB', opts.teamB);
@@ -117,8 +111,6 @@ function App() {
     team?: string;
     ourTeam?: string;
     game?: 'LOL' | 'VALORANT';
-    limit?: number;
-    timeframeDays?: number;
     compareMode?: boolean;
     teamB?: string;
   }) => {
@@ -126,8 +118,6 @@ function App() {
     const teamB = (opts?.teamB ?? teamNameB).trim();
     const our = (opts?.ourTeam ?? ourTeamName).trim();
     const game = opts?.game ?? selectedGame;
-    const limitN = opts?.limit ?? limit;
-    const daysN = opts?.timeframeDays ?? timeframeDays;
     const compare = opts?.compareMode ?? compareMode;
 
     if (!team) return;
@@ -146,8 +136,6 @@ function App() {
           teamName: t,
           ourTeamName: includeOur ? (our || undefined) : undefined,
           game: game.toLowerCase(),
-          limit: limitN,
-          timeframeDays: daysN || undefined,
         }),
       });
 
@@ -169,13 +157,13 @@ function App() {
         setReport(a);
         setReportB(b);
 
-        const share = buildShareUrl({ game, team, limit: limitN, timeframeDays: daysN, compareMode: true, teamB });
+        const share = buildShareUrl({ game, team, compareMode: true, teamB });
         window.history.replaceState({}, '', share);
       } else {
         const a = await postScout(team, true);
         setReport(a);
 
-        const share = buildShareUrl({ game, team, ourTeam: our || undefined, limit: limitN, timeframeDays: daysN });
+        const share = buildShareUrl({ game, team, ourTeam: our || undefined });
         window.history.replaceState({}, '', share);
       }
     } catch (err: any) {
@@ -196,22 +184,12 @@ function App() {
     const gameParam = params.get('game');
     const teamParam = params.get('team');
     const ourParam = params.get('our');
-    const limitParam = params.get('limit');
-    const daysParam = params.get('days');
+    // Legacy share-link params (no longer used): limit, days
     const compareParam = params.get('compare');
     const teamBParam = params.get('teamB');
 
     const gameFromUrl: 'LOL' | 'VALORANT' | undefined = gameParam === 'lol' ? 'LOL' : gameParam === 'valorant' ? 'VALORANT' : undefined;
     if (gameFromUrl) setSelectedGame(gameFromUrl);
-
-    if (limitParam) {
-      const n = parseInt(limitParam, 10);
-      if (Number.isFinite(n) && n > 0) setLimit(Math.min(50, n));
-    }
-    if (daysParam) {
-      const n = parseInt(daysParam, 10);
-      if (Number.isFinite(n) && n > 0) setTimeframeDays(Math.min(365, n));
-    }
 
     if (typeof compareParam === 'string' && compareParam === '1') {
       setCompareMode(true);
@@ -228,8 +206,6 @@ function App() {
         team: teamParam,
         ourTeam: ourParam || undefined,
         game: gameFromUrl,
-        limit: limitParam ? parseInt(limitParam, 10) : undefined,
-        timeframeDays: daysParam ? parseInt(daysParam, 10) : undefined,
         compareMode: compareParam === '1',
         teamB: teamBParam || undefined,
       });
@@ -240,8 +216,6 @@ function App() {
     const teamNameEncoded = encodeURIComponent(r.opponentName);
     const gameParam = (r.game || selectedGame).toLowerCase();
     const params = new URLSearchParams({ game: gameParam });
-    params.set('limit', String(limit));
-    if (timeframeDays) params.set('timeframeDays', String(timeframeDays));
     if (r.ourTeamName) {
       params.set('ourTeamName', r.ourTeamName);
     }
@@ -373,34 +347,6 @@ function App() {
               <span style={{ fontSize: '0.82rem', color: '#666' }}>(A vs B)</span>
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: 700 }}>Series</span>
-              <select
-                aria-label="Series limit"
-                value={limit}
-                onChange={(e) => setLimit(parseInt(e.target.value, 10))}
-                style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ccc' }}
-              >
-                {[5, 10, 20, 30].map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: 700 }}>Time window</span>
-              <select
-                aria-label="Time window"
-                value={timeframeDays}
-                onChange={(e) => setTimeframeDays(parseInt(e.target.value, 10))}
-                style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ccc' }}
-              >
-                {[14, 30, 60, 90, 180].map((n) => (
-                  <option key={n} value={n}>Last {n}d</option>
-                ))}
-              </select>
-            </label>
-
             <button
               type="button"
               onClick={async () => {
@@ -408,8 +354,6 @@ function App() {
                   game: selectedGame,
                   team: teamName,
                   ourTeam: compareMode ? undefined : (ourTeamName.trim() || undefined),
-                  limit,
-                  timeframeDays,
                   compareMode,
                   teamB: compareMode ? (teamNameB.trim() || undefined) : undefined,
                 });
@@ -549,7 +493,7 @@ function App() {
           <section style={{ backgroundColor: 'white', padding: '18px 20px', borderRadius: '10px', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
             <h2 style={{ margin: 0, color: '#333' }}>Compare View</h2>
             <div style={{ marginTop: '6px', color: '#666', fontSize: '0.9rem' }}>
-              Side-by-side opponent snapshots (same game, limit, and time window). Compare mode generates opponent-only reports for both teams.
+              Side-by-side opponent snapshots (same game). Compare mode generates opponent-only reports for both teams.
             </div>
           </section>
 
