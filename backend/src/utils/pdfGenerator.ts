@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { ScoutingReport, getMapWikiUrl } from '@scoutmaster-3000/shared';
 
 function resolveLocalChromeExecutablePath(): string {
@@ -27,26 +29,37 @@ function resolveLocalChromeExecutablePath(): string {
 }
 
 async function launchBrowser() {
-  const puppeteer = (await import('puppeteer-core')).default;
-
   // Vercel serverless: use a serverless-compatible Chromium build.
   if (process.env.VERCEL) {
-    const chromiumMod: any = await import('@sparticuz/chromium');
-    const chromium = chromiumMod?.default ?? chromiumMod;
-    const executablePath = await chromium.executablePath();
-    if (!executablePath) {
-      throw new Error('Chromium executable path could not be resolved on Vercel');
-    }
+    try {
+      console.log('Using Vercel/Serverless Chromium...');
 
-    return puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath,
-      headless: chromium.headless,
-    });
+      // @sparticuz/chromium settings for Vercel
+      // Note: We access properties directly from the statically imported module
+      const executablePath = await chromium.executablePath();
+      console.log('Chromium executable path resolved:', executablePath);
+
+      if (!executablePath) {
+        throw new Error('Chromium executable path could not be resolved on Vercel');
+      }
+
+      return puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath,
+        headless: chromium.headless,
+      });
+    } catch (error: any) {
+      console.error('FAILED to launch browser on Vercel:', error);
+      // Log more details if available
+      if (error.message) console.error('Error message:', error.message);
+      if (error.stack) console.error('Error stack:', error.stack);
+      throw error;
+    }
   }
 
   // Local dev: use system Chrome/Chromium (or CHROME_EXECUTABLE_PATH).
+  console.log('Using local system Chrome/Chromium...');
   return puppeteer.launch({
     headless: true,
     executablePath: resolveLocalChromeExecutablePath(),
@@ -611,9 +624,9 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
               </thead>
               <tbody>
                 ${report.mapPlans.slice(0, 6).map(mp => {
-                  const defaultComp = mp.commonCompositions?.[0];
-                  const defaultCompText = defaultComp ? `${defaultComp.members.join(', ')} (seen ${defaultComp.pickCount}×)` : '—';
-                  return `
+    const defaultComp = mp.commonCompositions?.[0];
+    const defaultCompText = defaultComp ? `${defaultComp.members.join(', ')} (seen ${defaultComp.pickCount}×)` : '—';
+    return `
                     <tr>
                       <td style="font-weight: bold;">${renderMapHtml(mp.mapName)}</td>
                       <td>${mp.matchesPlayed}</td>
@@ -623,7 +636,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
                       <td>${defaultCompText}</td>
                     </tr>
                   `;
-                }).join('')}
+  }).join('')}
               </tbody>
             </table>
           ` : `
@@ -657,16 +670,16 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
               </thead>
               <tbody>
                 ${report.playerTendencies.slice(0, 8).map(pt => {
-                  const topMaps = (pt.mapPerformance || []).slice(0, 2)
-                    .map(m => `${renderMapHtml(m.mapName)} (${m.matchesPlayed}×, ${Math.round(m.winRate * 100)}%)`)
-                    .join(' • ');
-                  const topPicks = (pt.topPicks || []).slice(0, 3)
-                    .map(p => `${p.name} (${p.pickCount}×)`)
-                    .join(', ');
-                  const clutch = pt.clutch
-                    ? `${pt.clutch.rating} (${pt.clutch.closeMatchesPlayed}×, ${Math.round(pt.clutch.winRate * 100)}%)`
-                    : '—';
-                  return `
+    const topMaps = (pt.mapPerformance || []).slice(0, 2)
+      .map(m => `${renderMapHtml(m.mapName)} (${m.matchesPlayed}×, ${Math.round(m.winRate * 100)}%)`)
+      .join(' • ');
+    const topPicks = (pt.topPicks || []).slice(0, 3)
+      .map(p => `${p.name} (${p.pickCount}×)`)
+      .join(', ');
+    const clutch = pt.clutch
+      ? `${pt.clutch.rating} (${pt.clutch.closeMatchesPlayed}×, ${Math.round(pt.clutch.winRate * 100)}%)`
+      : '—';
+    return `
                     <tr>
                       <td style="font-weight: bold;">${pt.playerName}</td>
                       <td>${pt.matchesPlayed}</td>
@@ -676,7 +689,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
                       <td>${clutch}</td>
                     </tr>
                   `;
-                }).join('')}
+  }).join('')}
               </tbody>
             </table>
           ` : `
