@@ -217,6 +217,67 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
         </table>
       </section>
 
+      <section>
+        <h3>🧠 Comps & Draft</h3>
+        <div class="grid-2col">
+          <div>
+            <h4 style="margin: 0 0 10px 0;">Top Picks / Bans</h4>
+            ${report.draftStats && report.draftStats.length > 0 ? `
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Picks</th>
+                    <th>Bans</th>
+                    <th>Win Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${report.draftStats.slice(0, 10).map(d => `
+                    <tr>
+                      <td style="font-weight: bold;">${d.heroOrMapName}</td>
+                      <td>${d.pickCount}</td>
+                      <td>${d.banCount}</td>
+                      <td>${d.pickCount > 0 ? `${Math.round(d.winRate * 100)}%` : '—'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            ` : `
+              <p style="font-style: italic; color: #666;">No draft data available for this team in the current dataset.</p>
+            `}
+          </div>
+
+          <div>
+            <h4 style="margin: 0 0 10px 0;">Common Compositions</h4>
+            ${report.compositions && report.compositions.length > 0 ? `
+              <table>
+                <thead>
+                  <tr>
+                    <th>Kind</th>
+                    <th>Members</th>
+                    <th>Seen</th>
+                    <th>Win Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${report.compositions.slice(0, 8).map(c => `
+                    <tr>
+                      <td style="font-weight: bold;">${c.kind}</td>
+                      <td>${c.members.join(', ')}</td>
+                      <td>${c.pickCount}</td>
+                      <td>${Math.round(c.winRate * 100)}%</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            ` : `
+              <p style="font-style: italic; color: #666;">No composition data available for this team in the current dataset.</p>
+            `}
+          </div>
+        </div>
+      </section>
+
       <div class="grid-2col">
         <section>
           <h3>👥 Player Watchlist</h3>

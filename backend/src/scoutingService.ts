@@ -1,5 +1,5 @@
 import { gridGraphqlClient } from './data/gridGraphqlClient.js';
-import { normalizeSeriesState } from './data/normalizer.js';
+import { normalizeCompositionStats, normalizeDraftStats, normalizeSeriesState } from './data/normalizer.js';
 import { ScoutingReport, Match } from '@scoutmaster-3000/shared';
 import { 
   calculateWinRate, 
@@ -14,7 +14,12 @@ import {
 /**
  * Shared internal logic to generate a scouting report from normalized matches.
  */
-async function generateReport(matches: Match[], teamRef: string, fallbackName: string): Promise<ScoutingReport> {
+async function generateReport(
+  matches: Match[],
+  teamRef: string,
+  fallbackName: string,
+  extras?: Pick<ScoutingReport, 'draftStats' | 'compositions'>
+): Promise<ScoutingReport> {
   // Try to find the actual team name from the matches if possible
   let actualName = fallbackName;
   for (const match of matches) {
@@ -43,6 +48,8 @@ async function generateReport(matches: Match[], teamRef: string, fallbackName: s
     aggression,
     avgScore,
     matchesAnalyzed: matches.length,
+    draftStats: extras?.draftStats,
+    compositions: extras?.compositions,
     isMockData: false,
   };
 }
@@ -64,7 +71,9 @@ export async function generateScoutingReportByName(teamName: string, limit: numb
     
     // 3. Normalize and generate report
     const allMatches: Match[] = seriesStates.flatMap(normalizeSeriesState);
-    return generateReport(allMatches, teamId, actualTeamName);
+    const draftStats = normalizeDraftStats(seriesStates, teamId);
+    const compositions = normalizeCompositionStats(seriesStates, teamId);
+    return generateReport(allMatches, teamId, actualTeamName, { draftStats, compositions });
   } catch (error) {
     console.error('Error generating scouting report from real data, falling back to mock:', (error as any).message);
     // If we have a real team name, use it in the mock report
@@ -79,7 +88,9 @@ export async function generateScoutingReportById(teamId: string, limit: number =
     
     // Normalize and generate report
     const allMatches: Match[] = seriesStates.flatMap(normalizeSeriesState);
-    return generateReport(allMatches, teamId, `Team ${teamId}`);
+    const draftStats = normalizeDraftStats(seriesStates, teamId);
+    const compositions = normalizeCompositionStats(seriesStates, teamId);
+    return generateReport(allMatches, teamId, `Team ${teamId}`, { draftStats, compositions });
   } catch (error) {
     console.error(`Error generating report for teamId ${teamId}, falling back to mock:`, (error as any).message);
     return generateMockReport(`Team ${teamId}`);
@@ -113,6 +124,15 @@ function generateMockReport(teamName: string): ScoutingReport {
     aggression: 'High',
     avgScore: 14,
     matchesAnalyzed: 10,
+    draftStats: [
+      { heroOrMapName: 'Jett', pickCount: 6, banCount: 1, winRate: 0.67 },
+      { heroOrMapName: 'Sova', pickCount: 5, banCount: 0, winRate: 0.60 },
+      { heroOrMapName: 'Ascent', pickCount: 0, banCount: 2, winRate: 0 },
+    ],
+    compositions: [
+      { kind: 'AGENT', members: ['Jett', 'Omen', 'Sova', 'Killjoy', 'Skye'], pickCount: 4, winRate: 0.75 },
+      { kind: 'AGENT', members: ['Raze', 'Brimstone', 'Sova', 'Cypher', 'Fade'], pickCount: 2, winRate: 0.50 },
+    ],
     isMockData: true,
   };
 }

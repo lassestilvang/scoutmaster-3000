@@ -1,5 +1,5 @@
 import { GridTeam, GridSeriesState, GridSeriesTeamState } from './gridGraphqlClient.js';
-import { Team, Match, TeamResult, Player, DraftStats } from '@scoutmaster-3000/shared';
+import { Team, Match, TeamResult, Player, DraftStats, CompositionStats, CompositionKind } from '@scoutmaster-3000/shared';
 
 /**
  * Normalizes a raw GRID Series State into a list of Match models.
@@ -81,6 +81,67 @@ export function normalizeDraftStats(seriesStates: GridSeriesState[], teamId: str
     banCount: stats.bans,
     winRate: stats.picks > 0 ? stats.wins / stats.picks : 0
   })).sort((a, b) => (b.pickCount + b.banCount) - (a.pickCount + a.banCount));
+}
+
+/**
+ * Aggregates team composition stats from draft actions.
+ * For LoL this is typically champion picks; for VALORANT this is typically agent picks.
+ *
+ * Notes:
+ * - We build one composition per series per kind (CHAMPION/AGENT/UNKNOWN)
+ * - We treat the series outcome as the win/loss label for the composition
+ */
+export function normalizeCompositionStats(seriesStates: GridSeriesState[], teamId: string): CompositionStats[] {
+  const compMap: Record<string, { kind: CompositionKind; members: string[]; seriesCount: number; wins: number }> = {};
+
+  const toKind = (t?: string): CompositionKind => {
+    const upper = (t || '').toUpperCase();
+    if (upper === 'CHAMPION') return 'CHAMPION';
+    if (upper === 'AGENT') return 'AGENT';
+    return 'UNKNOWN';
+  };
+
+  for (const ss of seriesStates) {
+    const teamWon = ss.teams.find(t => t.id === teamId)?.won || false;
+    const actions = ss.draftActions || [];
+
+    const picksByKind: Record<CompositionKind, Set<string>> = {
+      CHAMPION: new Set<string>(),
+      AGENT: new Set<string>(),
+      UNKNOWN: new Set<string>(),
+    };
+
+    for (const action of actions) {
+      if (action.type !== 'PICK') continue;
+      if (action.drafter?.id !== teamId) continue;
+      const name = action.draftable?.name;
+      if (!name) continue;
+
+      const kind = toKind(action.draftable?.type);
+      picksByKind[kind].add(name);
+    }
+
+    (Object.keys(picksByKind) as CompositionKind[]).forEach(kind => {
+      const members = [...picksByKind[kind]].sort((a, b) => a.localeCompare(b));
+      if (members.length === 0) return;
+
+      const key = `${kind}:${members.join('|')}`;
+      if (!compMap[key]) {
+        compMap[key] = { kind, members, seriesCount: 0, wins: 0 };
+      }
+      compMap[key].seriesCount++;
+      if (teamWon) compMap[key].wins++;
+    });
+  }
+
+  return Object.values(compMap)
+    .map(v => ({
+      kind: v.kind,
+      members: v.members,
+      pickCount: v.seriesCount,
+      winRate: v.seriesCount > 0 ? v.wins / v.seriesCount : 0,
+    }))
+    .sort((a, b) => b.pickCount - a.pickCount);
 }
 
 // Since GRID responses often group things differently, 

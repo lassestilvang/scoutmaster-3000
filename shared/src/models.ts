@@ -43,3 +43,12 @@ export interface DraftStats {
   banCount: number;
   winRate: number;
 }
+
+export type CompositionKind = 'CHAMPION' | 'AGENT' | 'UNKNOWN';
+
+export interface CompositionStats {
+  kind: CompositionKind;
+  members: string[];
+  pickCount: number;
+  winRate: number;
+}

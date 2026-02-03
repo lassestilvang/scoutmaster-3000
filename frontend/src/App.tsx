@@ -247,6 +247,60 @@ function App() {
             </table>
           </section>
 
+          {/* 2.5 Comps & Draft */}
+          <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+            <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🧠 Comps & Draft</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div>
+                <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>Top Picks / Bans</h4>
+                {report.draftStats && report.draftStats.length > 0 ? (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Name</th>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Picks</th>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Bans</th>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Win Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.draftStats.slice(0, 10).map((d, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #f1f1f1' }}>
+                          <td style={{ padding: '10px 8px', fontWeight: 'bold' }}>{d.heroOrMapName}</td>
+                          <td style={{ padding: '10px 8px' }}>{d.pickCount}</td>
+                          <td style={{ padding: '10px 8px' }}>{d.banCount}</td>
+                          <td style={{ padding: '10px 8px' }}>{d.pickCount > 0 ? `${Math.round(d.winRate * 100)}%` : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p style={{ fontStyle: 'italic', color: '#666' }}>No draft data available for this team in the current dataset.</p>
+                )}
+              </div>
+
+              <div>
+                <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>Common Compositions</h4>
+                {report.compositions && report.compositions.length > 0 ? (
+                  <ol style={{ margin: 0, paddingLeft: '18px', color: '#333' }}>
+                    {report.compositions.slice(0, 8).map((c, i) => (
+                      <li key={i} style={{ marginBottom: '10px' }}>
+                        <div style={{ fontWeight: 600 }}>
+                          {c.kind}: {c.members.join(', ')}
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                          Seen {c.pickCount}× • Win rate {Math.round(c.winRate * 100)}%
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p style={{ fontStyle: 'italic', color: '#666' }}>No composition data available for this team in the current dataset.</p>
+                )}
+              </div>
+            </div>
+          </section>
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
             {/* 3. Player Watchlist */}
             <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
