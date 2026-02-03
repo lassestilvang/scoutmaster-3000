@@ -63,6 +63,15 @@ export interface PlayerMapPerformance {
   winRate: number; // 0 to 1
 }
 
+export interface PlayerClutchIndicator {
+  /**
+   * Best-effort, derived from “close matches” where the player appears.
+   */
+  closeMatchesPlayed: number;
+  winRate: number; // 0 to 1
+  rating: 'High' | 'Medium' | 'Low';
+}
+
 export interface PlayerDraftableStat {
   name: string;
   type: CompositionKind;
@@ -80,6 +89,10 @@ export interface PlayerTendency {
    * Best-effort: only available when draft actions attribute picks to a player.
    */
   topPicks?: PlayerDraftableStat[];
+  /**
+   * Conservative proxy for “clutch/high-impact”.
+   */
+  clutch?: PlayerClutchIndicator;
 }
 
 export interface RosterStability {

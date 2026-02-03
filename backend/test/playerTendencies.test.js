@@ -58,6 +58,57 @@ test('calculatePlayerTendencies aggregates per-player map performance from match
   assert.equal(t2.winRate, 1);
 });
 
+test('calculatePlayerTendencies includes a clutch indicator from close-match outcomes', () => {
+  const teamId = 't1';
+
+  const p1 = { id: 'p1', name: 'Player1', teamId };
+  const p2 = { id: 'p2', name: 'Player2', teamId };
+
+  const matches = [
+    // Close win (diff 2)
+    {
+      id: 'g1',
+      seriesId: 's1',
+      startTime: '2026-01-03T00:00:00Z',
+      mapName: 'Ascent',
+      teams: [
+        { teamId, teamName: 'Team A', score: 13, isWinner: true, players: [p1, p2] },
+        { teamId: 't2', teamName: 'Team B', score: 11, isWinner: false, players: [] },
+      ],
+    },
+    // Close loss (diff 2)
+    {
+      id: 'g2',
+      seriesId: 's2',
+      startTime: '2026-01-02T00:00:00Z',
+      mapName: 'Bind',
+      teams: [
+        { teamId, teamName: 'Team A', score: 11, isWinner: false, players: [p2] },
+        { teamId: 't2', teamName: 'Team B', score: 13, isWinner: true, players: [] },
+      ],
+    },
+    // Not close (diff 4)
+    {
+      id: 'g3',
+      seriesId: 's3',
+      startTime: '2026-01-01T00:00:00Z',
+      mapName: 'Ascent',
+      teams: [
+        { teamId, teamName: 'Team A', score: 13, isWinner: true, players: [p1, p2] },
+        { teamId: 't2', teamName: 'Team B', score: 9, isWinner: false, players: [] },
+      ],
+    },
+  ];
+
+  const tendencies = calculatePlayerTendencies(matches, teamId);
+  const t2 = tendencies.find(t => t.playerId === 'p2');
+  assert.ok(t2);
+  assert.ok(t2.clutch);
+  assert.equal(t2.clutch.closeMatchesPlayed, 2);
+  assert.equal(t2.clutch.winRate, 0.5);
+  assert.equal(t2.clutch.rating, 'Medium');
+});
+
 test('calculateRosterStability estimates core players and confidence from recent matches', () => {
   const teamId = 't1';
   const p1 = { id: 'p1', name: 'Player1', teamId };

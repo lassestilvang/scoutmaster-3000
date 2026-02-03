@@ -11,6 +11,7 @@ import {
   calculateWinRate, 
   generateScoutingInsights, 
   generateHowToWin,
+  generateHowToWinMatchup,
   calculateMapStats,
   identifyRecentRoster,
   calculateRosterStability,
@@ -27,6 +28,7 @@ async function generateReport(
   teamRef: string,
   fallbackName: string,
   extras?: Pick<ScoutingReport, 'draftStats' | 'compositions' | 'mapPlans' | 'rosterStability' | 'playerTendencies'>,
+  ourTeamName?: string,
   game?: 'LOL' | 'VALORANT'
 ): Promise<ScoutingReport> {
   // Try to find the actual team name from the matches if possible
@@ -50,6 +52,7 @@ async function generateReport(
   const avgScore = calculateAverageScore(matches, teamRef);
 
   return {
+    ourTeamName,
     opponentName: actualName,
     game,
     winProbability,
@@ -97,6 +100,7 @@ export async function generateScoutingReportByName(teamName: string, limit: numb
       teamId,
       actualTeamName,
       { draftStats, compositions, mapPlans, playerTendencies, rosterStability },
+      undefined,
       game
     );
   } catch (error) {
@@ -131,17 +135,95 @@ export async function generateScoutingReportById(teamId: string, limit: number =
   }
 }
 
+export async function generateMatchupScoutingReportByName(
+  ourTeamName: string,
+  opponentTeamName: string,
+  limit: number = 10,
+  game?: 'LOL' | 'VALORANT'
+): Promise<ScoutingReport> {
+  try {
+    const [ourTeams, opponentTeams] = await Promise.all([
+      gridGraphqlClient.findTeamsByName(ourTeamName, 1, game),
+      gridGraphqlClient.findTeamsByName(opponentTeamName, 1, game),
+    ]);
+
+    if (ourTeams.length === 0 || opponentTeams.length === 0) {
+      console.error('Matchup report falling back to mock: could not resolve both teams in GRID Central Data.');
+      return generateMockReport(opponentTeamName, game, ourTeamName);
+    }
+
+    const ourId = ourTeams[0].id;
+    const ourActualName = ourTeams[0].name;
+    const opponentId = opponentTeams[0].id;
+    const opponentActualName = opponentTeams[0].name;
+
+    const [ourSeriesStates, opponentSeriesStates] = await Promise.all([
+      gridGraphqlClient.getFullSeriesByTeam(ourId, limit),
+      gridGraphqlClient.getFullSeriesByTeam(opponentId, limit),
+    ]);
+
+    const opponentMatches: Match[] = opponentSeriesStates.flatMap(normalizeSeriesState);
+    const ourMatches: Match[] = ourSeriesStates.flatMap(normalizeSeriesState);
+
+    const draftStats = normalizeDraftStats(opponentSeriesStates, opponentId);
+    const compositions = normalizeCompositionStats(opponentSeriesStates, opponentId);
+    const mapPlans = normalizeMapPlans(opponentSeriesStates, opponentId);
+    const playerDraftPicks = normalizePlayerDraftPicks(opponentSeriesStates, opponentId);
+    const playerTendencies = calculatePlayerTendencies(opponentMatches, opponentId, playerDraftPicks);
+    const rosterStability = calculateRosterStability(opponentMatches, opponentId);
+
+    // Override “How to Win” with matchup-aware recommendations.
+    const matchupHowToWin = generateHowToWinMatchup(ourMatches, ourId, opponentMatches, opponentId);
+
+    const report = await generateReport(
+      opponentMatches,
+      opponentId,
+      opponentActualName,
+      { draftStats, compositions, mapPlans, playerTendencies, rosterStability },
+      ourActualName,
+      game
+    );
+
+    report.howToWin = matchupHowToWin.length > 0 ? matchupHowToWin : report.howToWin;
+    return report;
+  } catch (error) {
+    console.error('Error generating matchup scouting report from real data, falling back to mock:', (error as any).message);
+    return generateMockReport(opponentTeamName, game, ourTeamName);
+  }
+}
+
 /**
  * Generates a mock report for demo/fallback purposes.
  */
-function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT'): ScoutingReport {
+function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT', ourTeamName?: string): ScoutingReport {
   // Simple mock data for demo
   const roster = [
     { id: 'p1', name: 'MockPlayer1', teamId: 'mock' },
     { id: 'p2', name: 'MockPlayer2', teamId: 'mock' }
   ];
 
+  const howToWin = ourTeamName
+    ? [
+        {
+          insight: 'Prioritize your comfort maps and force their weakest looks',
+          evidence: 'Mock mode: matchup recommendations are illustrative when real series data is unavailable',
+        },
+        {
+          insight: 'Match their tempo: prepare anti-rush and anti-default round plans',
+          evidence: 'Mock mode: use this as a checklist until real aggression data can be fetched',
+        },
+        {
+          insight: 'Draft denial: ban their most-picked comfort and target their off-maps',
+          evidence: 'Mock mode: draft stats shown are example values (not live GRID data)',
+        },
+      ]
+    : [
+        { insight: 'Prioritize defensive utility', evidence: 'Opponent averages 14 points per game' },
+        { insight: 'Force the series to Overpass', evidence: 'Opponent has 30% win rate on this map' },
+      ];
+
   return {
+    ourTeamName,
     opponentName: teamName,
     game,
     winProbability: 65,
@@ -149,10 +231,7 @@ function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT'): Scouti
       `Aggression: Displays a high aggression profile based on scoring patterns.`,
       `Map Specialist: Particularly active on Mirage with a 75% success rate.`
     ],
-    howToWin: [
-      { insight: 'Prioritize defensive utility', evidence: 'Opponent averages 14 points per game' },
-      { insight: 'Force the series to Overpass', evidence: 'Opponent has 30% win rate on this map' }
-    ],
+    howToWin,
     topMaps: [
       { mapName: 'Mirage', matchesPlayed: 8, winRate: 0.75 },
       { mapName: 'Inferno', matchesPlayed: 5, winRate: 0.60 }

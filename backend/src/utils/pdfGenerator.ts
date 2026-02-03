@@ -159,7 +159,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
     <body>
       <header>
         <h1>ScoutMaster 3000 🎯</h1>
-        <div class="subtitle">Scouting Report: ${report.opponentName}</div>
+        <div class="subtitle">${report.ourTeamName ? `Matchup Report: ${report.ourTeamName} vs ${report.opponentName}` : `Scouting Report: ${report.opponentName}`}</div>
       </header>
 
       ${report.isMockData ? `
@@ -169,14 +169,14 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
       ` : ''}
 
       <section>
-        <h2>Team Snapshot</h2>
+        <h2>${report.ourTeamName ? 'Matchup Snapshot' : 'Team Snapshot'}</h2>
         <div class="snapshot-grid">
           <div class="stat-card">
-            <div class="stat-label">Win Probability</div>
+            <div class="stat-label">${report.ourTeamName ? 'Opponent Win Rate' : 'Win Probability'}</div>
             <div class="stat-value" style="color: ${report.winProbability > 50 ? '#28a745' : '#dc3545'}">${report.winProbability}%</div>
           </div>
           <div class="stat-card">
-            <div class="stat-label">Avg. Score</div>
+            <div class="stat-label">${report.ourTeamName ? 'Opponent Avg. Score' : 'Avg. Score'}</div>
             <div class="stat-value">${report.avgScore}</div>
           </div>
           <div class="stat-card">
@@ -341,6 +341,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
                   <th>Win Rate</th>
                   <th>Top Maps</th>
                   <th>Top Picks</th>
+                  <th>Clutch</th>
                 </tr>
               </thead>
               <tbody>
@@ -351,6 +352,9 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
                   const topPicks = (pt.topPicks || []).slice(0, 3)
                     .map(p => `${p.name} (${p.pickCount}×)`)
                     .join(', ');
+                  const clutch = pt.clutch
+                    ? `${pt.clutch.rating} (${pt.clutch.closeMatchesPlayed}×, ${Math.round(pt.clutch.winRate * 100)}%)`
+                    : '—';
                   return `
                     <tr>
                       <td style="font-weight: bold;">${pt.playerName}</td>
@@ -358,6 +362,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
                       <td>${Math.round(pt.winRate * 100)}%</td>
                       <td>${topMaps || '—'}</td>
                       <td>${topPicks || '—'}</td>
+                      <td>${clutch}</td>
                     </tr>
                   `;
                 }).join('')}

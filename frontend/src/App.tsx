@@ -4,6 +4,7 @@ import { ScoutingReport } from '@scoutmaster-3000/shared';
 function App() {
   const [health, setHealth] = useState<{ status: string; message: string } | null>(null);
   const [teamName, setTeamName] = useState('');
+  const [ourTeamName, setOurTeamName] = useState('');
   const [suggestions, setSuggestions] = useState<Array<{ id: string, name: string }>>([]);
   const [report, setReport] = useState<ScoutingReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -37,7 +38,11 @@ function App() {
   const handleDownloadPdf = () => {
     if (!report) return;
     const teamNameEncoded = encodeURIComponent(report.opponentName);
-    const params = new URLSearchParams({ game: selectedGame.toLowerCase() });
+    const gameParam = (report.game || selectedGame).toLowerCase();
+    const params = new URLSearchParams({ game: gameParam });
+    if (report.ourTeamName) {
+      params.set('ourTeamName', report.ourTeamName);
+    }
     window.location.href = `/api/scout/name/${teamNameEncoded}/pdf?${params.toString()}`;
   };
 
@@ -51,7 +56,7 @@ function App() {
       const response = await fetch('/api/scout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamName, game: selectedGame.toLowerCase() }),
+        body: JSON.stringify({ teamName, ourTeamName: ourTeamName.trim() || undefined, game: selectedGame.toLowerCase() }),
       });
       const data = await response.json();
       setReport(data);
@@ -122,7 +127,7 @@ function App() {
             </label>
           </div>
 
-          <form onSubmit={handleScout} style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+          <form onSubmit={handleScout} style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <input
               type="text"
               value={teamName}
@@ -130,6 +135,13 @@ function App() {
               placeholder={selectedGame === 'VALORANT' ? 'Enter VALORANT team name…' : 'Enter LoL team name…'}
               list="team-suggestions"
               style={{ padding: '12px', width: '300px', borderRadius: '4px', border: '1px solid #ccc' }}
+            />
+            <input
+              type="text"
+              value={ourTeamName}
+              onChange={(e) => setOurTeamName(e.target.value)}
+              placeholder="(Optional) Your team name…"
+              style={{ padding: '12px', width: '240px', borderRadius: '4px', border: '1px solid #ccc' }}
             />
             <datalist id="team-suggestions">
               {suggestions.map((s) => (
@@ -174,7 +186,7 @@ function App() {
           <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #007bff', paddingBottom: '10px', marginBottom: '10px' }}>
               <h2 style={{ margin: 0, color: '#333' }}>
-                Team Snapshot: {report.opponentName}
+                {report.ourTeamName ? `Matchup: ${report.ourTeamName} vs ${report.opponentName}` : `Team Snapshot: ${report.opponentName}`}
               </h2>
               <button
                 onClick={handleDownloadPdf}
@@ -197,11 +209,15 @@ function App() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '20px', marginTop: '20px' }}>
               <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
-                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Win Probability</div>
+                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
+                  {report.ourTeamName ? 'Opponent Win Rate' : 'Win Probability'}
+                </div>
                 <div style={{ fontSize: '2rem', fontWeight: 'bold', color: report.winProbability > 50 ? '#28a745' : '#dc3545' }}>{report.winProbability}%</div>
               </div>
               <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
-                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Avg. Score</div>
+                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
+                  {report.ourTeamName ? 'Opponent Avg. Score' : 'Avg. Score'}
+                </div>
                 <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{report.avgScore}</div>
               </div>
               <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
@@ -302,7 +318,7 @@ function App() {
           </section>
 
           {/* 2.75 Default Map Plan (VAL) */}
-          {selectedGame === 'VALORANT' && (
+          {report.game === 'VALORANT' && (
             <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
               <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🗺️ Default Map Plan (VAL)</h3>
               <p style={{ marginTop: 0, color: '#666', fontSize: '0.9rem' }}>
@@ -395,6 +411,7 @@ function App() {
                   {report.playerTendencies.slice(0, 8).map((pt) => {
                     const topMaps = pt.mapPerformance.slice(0, 2);
                     const topPicks = pt.topPicks?.slice(0, 3) || [];
+                    const clutch = pt.clutch;
                     return (
                       <div key={pt.playerId} style={{ border: '1px solid #eee', borderRadius: '8px', padding: '12px 14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px' }}>
@@ -415,6 +432,13 @@ function App() {
                           <div style={{ marginTop: '6px', fontSize: '0.85rem', color: '#666' }}>
                             <strong>Top picks:</strong>{' '}
                             {topPicks.map(p => `${p.name} (${p.pickCount}×)`).join(', ')}
+                          </div>
+                        )}
+
+                        {clutch && (
+                          <div style={{ marginTop: '6px', fontSize: '0.85rem', color: '#666' }}>
+                            <strong>Clutch:</strong>{' '}
+                            {clutch.rating} (close matches {clutch.closeMatchesPlayed}× • {Math.round(clutch.winRate * 100)}% wins)
                           </div>
                         )}
                       </div>

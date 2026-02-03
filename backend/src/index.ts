@@ -4,6 +4,7 @@ import cors from 'cors';
 import { 
   generateScoutingReportByName, 
   generateScoutingReportById,
+  generateMatchupScoutingReportByName,
   searchTeams
 } from './scoutingService.js';
 import { generatePdf } from './utils/pdfGenerator.js';
@@ -87,7 +88,7 @@ app.get('/api/scout/:teamId/pdf', async (req, res) => {
 });
 
 app.post('/api/scout', async (req, res) => {
-  const { teamName, game } = req.body as { teamName?: string; game?: string };
+  const { teamName, ourTeamName, game } = req.body as { teamName?: string; ourTeamName?: string; game?: string };
   if (!teamName) {
     return res.status(400).json({ error: 'teamName is required' });
   }
@@ -97,7 +98,9 @@ app.post('/api/scout', async (req, res) => {
     : undefined;
 
   try {
-    const report = await generateScoutingReportByName(teamName, 10, gameEnum as any);
+    const report = (ourTeamName && ourTeamName.trim() !== '')
+      ? await generateMatchupScoutingReportByName(ourTeamName, teamName, 10, gameEnum as any)
+      : await generateScoutingReportByName(teamName, 10, gameEnum as any);
     res.json(report);
   } catch (error) {
     console.error('Error generating report:', error);
@@ -113,12 +116,15 @@ app.get('/api/scout/name/:teamName/pdf', async (req, res) => {
   const { teamName } = req.params;
   const limit = parseInt(req.query.limit as string) || 10;
   const game = (req.query.game as string | undefined) || undefined;
+  const ourTeamName = (req.query.ourTeamName as string | undefined) || undefined;
   const gameEnum = (typeof game === 'string' && game.toLowerCase() === 'lol') ? 'LOL'
     : (typeof game === 'string' && game.toLowerCase() === 'valorant') ? 'VALORANT'
     : undefined;
 
   try {
-    const report = await generateScoutingReportByName(teamName, limit, gameEnum as any);
+    const report = (ourTeamName && ourTeamName.trim() !== '')
+      ? await generateMatchupScoutingReportByName(ourTeamName, teamName, limit, gameEnum as any)
+      : await generateScoutingReportByName(teamName, limit, gameEnum as any);
     const pdfBuffer = await generatePdf(report);
 
     res.contentType('application/pdf');

@@ -10,6 +10,10 @@ import {
 } from './models.js';
 
 export interface ScoutingReport {
+  /**
+   * When present, the report’s recommendations are generated in “matchup mode” (our team vs opponent).
+   */
+  ourTeamName?: string;
   opponentName: string;
   game?: 'LOL' | 'VALORANT';
   winProbability: number;
