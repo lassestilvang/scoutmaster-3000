@@ -9,6 +9,8 @@ import {
   PlayerTendency,
   RosterStability,
   ReportEvidence,
+  ReportDataSource,
+  ReportRawInputs,
 } from './models.js';
 
 export interface ScoutingReport {
@@ -20,6 +22,14 @@ export interface ScoutingReport {
   game?: 'LOL' | 'VALORANT';
   winProbability: number;
   evidence: ReportEvidence;
+  /**
+   * Judge-friendly description of what sources were used.
+   */
+  dataSources: ReportDataSource[];
+  /**
+   * A bounded, readable slice of normalized inputs (not raw API payloads).
+   */
+  rawInputs?: ReportRawInputs;
   keyInsights: string[];
   howToWin: StrategicInsight[];
   /**

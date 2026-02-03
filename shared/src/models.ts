@@ -115,6 +115,49 @@ export interface ReportEvidence {
   winRateTrend?: WinRateTrend;
 }
 
+/**
+ * Explicit, judge-friendly description of what external data sources were used.
+ */
+export interface ReportDataSource {
+  /**
+   * Stable identifier for rendering.
+   */
+  id: 'central-data' | 'series-state' | 'mock';
+  name: string;
+  endpoint?: string;
+  purpose: string;
+  /**
+   * Whether this source was actually used for this report.
+   * In mock mode this will typically be false.
+   */
+  used: boolean;
+}
+
+export type MatchResultCode = 'W' | 'L' | '?';
+
+/**
+ * A small, bounded slice of the normalized inputs used to compute the report.
+ * This intentionally avoids large/raw API payload dumps.
+ */
+export interface NormalizedMatchInput {
+  matchId: string;
+  seriesId: string;
+  startTime: string;
+  mapName: string;
+  opponentName: string;
+  teamScore: number;
+  opponentScore: number;
+  result: MatchResultCode;
+}
+
+export interface ReportRawInputs {
+  kind: 'NormalizedMatches';
+  totalMatches: number;
+  shownMatches: number;
+  truncated: boolean;
+  matches: NormalizedMatchInput[];
+}
+
 export interface MapStats {
   mapName: string;
   matchesPlayed: number;

@@ -13,6 +13,7 @@ import {
   generateHowToWin,
   generateHowToWinEngine,
   generateHowToWinMatchup,
+  buildReportRawInputs,
   calculateMapStats,
   identifyRecentRoster,
   calculateRosterStability,
@@ -22,6 +23,40 @@ import {
   calculateWinRateTrend,
   filterMatchesByTimeframe
 } from './analysis/scoutingAnalysis.js';
+
+const GRID_CENTRAL_DATA_ENDPOINT = 'https://api-op.grid.gg/central-data/graphql';
+const GRID_SERIES_STATE_ENDPOINT = 'https://api-op.grid.gg/live-data-feed/series-state/graphql';
+
+function buildReportDataSources(isMock: boolean): ScoutingReport['dataSources'] {
+  const used = !isMock;
+  const sources: ScoutingReport['dataSources'] = [
+    {
+      id: 'central-data',
+      name: 'GRID Central Data (GraphQL)',
+      endpoint: GRID_CENTRAL_DATA_ENDPOINT,
+      purpose: 'Team search + recent series IDs (discovery layer)',
+      used,
+    },
+    {
+      id: 'series-state',
+      name: 'GRID Series State (GraphQL)',
+      endpoint: GRID_SERIES_STATE_ENDPOINT,
+      purpose: 'Series results, per-map outcomes, players, and draft actions',
+      used,
+    },
+  ];
+
+  if (isMock) {
+    sources.push({
+      id: 'mock',
+      name: 'Demo / Mock dataset',
+      purpose: 'Used when GRID API is unavailable (missing key / rate limit / network) or team can’t be resolved',
+      used: true,
+    });
+  }
+
+  return sources;
+}
 
 class TeamNotFoundError extends Error {
   which: 'opponent' | 'our';
@@ -135,6 +170,8 @@ async function generateReport(
 
   const winProbability = calculateWinRate(matches, teamRef);
   const evidence = buildReportEvidence(matches, teamRef);
+  const dataSources = buildReportDataSources(false);
+  const rawInputs = buildReportRawInputs(matches, teamRef, 20);
   const insights = generateScoutingInsights(matches, teamRef);
   const howToWinEngine = generateHowToWinEngine(matches, teamRef);
   const howToWin = howToWinEngine.selected;
@@ -151,6 +188,8 @@ async function generateReport(
     game,
     winProbability,
     evidence,
+    dataSources,
+    rawInputs,
     keyInsights: insights,
     howToWin: howToWin,
     howToWinEngine: ourTeamName ? undefined : howToWinEngine,
@@ -345,6 +384,28 @@ function generateMockReport(
     winRateConfidence: 'Medium',
   };
 
+  const dataSources = buildReportDataSources(true);
+
+  const mockTeamId = 'mock-team';
+  const otherTeamId = 'other-team';
+  const mockMatches: Match[] = Array.from({ length: 10 }, (_, i) => {
+    const mapName = i % 2 === 0 ? 'Mirage' : 'Inferno';
+    const won = i % 3 !== 0;
+    const teamScore = won ? 13 : 9;
+    const oppScore = won ? 9 : 13;
+    return {
+      id: `mock-match-${i + 1}`,
+      seriesId: `mock-series-${i + 1}`,
+      startTime: new Date(now - i * 24 * 60 * 60 * 1000).toISOString(),
+      mapName,
+      teams: [
+        { teamId: mockTeamId, teamName, score: teamScore, isWinner: won, players: roster },
+        { teamId: otherTeamId, teamName: 'Other', score: oppScore, isWinner: !won, players: [] },
+      ],
+    };
+  });
+  const rawInputs = buildReportRawInputs(mockMatches, mockTeamId, 20);
+
   const howToWin = ourTeamName
     ? [
         {
@@ -392,6 +453,8 @@ function generateMockReport(
     game,
     winProbability: 65,
     evidence,
+    dataSources,
+    rawInputs,
     keyInsights: [
       `Aggression: Displays a high aggression profile based on scoring patterns.`,
       `Map Specialist: Particularly active on Mirage with a 75% success rate.`

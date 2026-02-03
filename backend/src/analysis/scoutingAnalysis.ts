@@ -11,6 +11,8 @@ import {
   RosterStability,
   Confidence,
   WinRateTrend,
+  NormalizedMatchInput,
+  ReportRawInputs,
 } from '@scoutmaster-3000/shared';
 
 function confidenceFromSampleSize(n: number): Confidence {
@@ -95,6 +97,54 @@ function findTeam(match: Match, teamRef: string) {
   return match.teams.find(t => 
     t.teamId === teamRef || t.teamName.toLowerCase() === teamRef.toLowerCase()
   );
+}
+
+/**
+ * Produces a bounded, judge-friendly list of normalized matches used as inputs.
+ *
+ * This is intentionally a small slice (defaults to 20) to avoid huge dumps.
+ */
+export function buildReportRawInputs(
+  matches: Match[],
+  teamRef: string,
+  maxMatches: number = 20
+): ReportRawInputs {
+  const max = (Number.isFinite(maxMatches) && maxMatches > 0) ? Math.floor(maxMatches) : 20;
+
+  const sorted = [...matches].sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+  const slice = sorted.slice(0, max);
+
+  const normalized: NormalizedMatchInput[] = slice.map(m => {
+    const team = findTeam(m, teamRef);
+    const opponent = team ? (m.teams.find(t => t.teamId !== team.teamId) || m.teams.find(t => t.teamName.toLowerCase() !== team.teamName.toLowerCase())) : undefined;
+
+    const teamScore = team?.score;
+    const opponentScore = opponent?.score;
+
+    const result: NormalizedMatchInput['result'] =
+      team?.isWinner === true ? 'W'
+        : team?.isWinner === false ? 'L'
+          : '?';
+
+    return {
+      matchId: m.id,
+      seriesId: m.seriesId,
+      startTime: m.startTime,
+      mapName: m.mapName || 'Unknown',
+      opponentName: opponent?.teamName || 'Unknown',
+      teamScore: typeof teamScore === 'number' && Number.isFinite(teamScore) ? teamScore : 0,
+      opponentScore: typeof opponentScore === 'number' && Number.isFinite(opponentScore) ? opponentScore : 0,
+      result,
+    };
+  });
+
+  return {
+    kind: 'NormalizedMatches',
+    totalMatches: matches.length,
+    shownMatches: normalized.length,
+    truncated: matches.length > normalized.length,
+    matches: normalized,
+  };
 }
 
 /**

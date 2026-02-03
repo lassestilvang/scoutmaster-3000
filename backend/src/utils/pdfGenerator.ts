@@ -27,6 +27,54 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
     ? `${evidenceTrend.direction === 'Up' ? '↑' : evidenceTrend.direction === 'Down' ? '↓' : '→'} ${evidenceTrend.direction} (${evidenceTrend.deltaPctPoints >= 0 ? '+' : ''}${evidenceTrend.deltaPctPoints}pp) — last ${evidenceTrend.recentMatches} vs previous ${evidenceTrend.previousMatches}`
     : '—';
 
+  const dataSources = report.dataSources || [];
+  const dataSourcesHtml = dataSources.length > 0
+    ? `
+      <ul style="margin: 8px 0 0 18px; color: #333;">
+        ${dataSources.map(s => `
+          <li style="margin-bottom: 6px;">
+            <div style="font-weight: 700;">${s.name} <span style="color: ${s.used ? '#155724' : '#721c24'}; font-weight: 700;">(${s.used ? 'used' : 'not used'})</span></div>
+            <div style="color: #666; font-size: 0.85rem;">${s.purpose}</div>
+            ${s.endpoint ? `<div style="margin-top: 2px; color: #666; font-size: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">${s.endpoint}</div>` : ''}
+          </li>
+        `).join('')}
+      </ul>
+    `
+    : '<div style="color: #666;">—</div>';
+
+  const rawInputs = report.rawInputs;
+  const rawInputsHtml = rawInputs && rawInputs.matches && rawInputs.matches.length > 0
+    ? `
+      <div style="margin-top: 6px; font-size: 0.8rem; color: #666;">
+        Showing ${rawInputs.shownMatches} of ${rawInputs.totalMatches} matches${rawInputs.truncated ? ' (truncated)' : ''}.
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Map</th>
+            <th>Result</th>
+            <th>Score</th>
+            <th>Opponent</th>
+            <th>Series</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rawInputs.matches.slice(0, 10).map(m => `
+            <tr>
+              <td>${fmtDate(m.startTime)}</td>
+              <td style="font-weight: bold;">${m.mapName}</td>
+              <td style="font-weight: bold; color: ${m.result === 'W' ? '#28a745' : m.result === 'L' ? '#dc3545' : '#666'};">${m.result}</td>
+              <td>${m.teamScore}-${m.opponentScore}</td>
+              <td>${m.opponentName}</td>
+              <td style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.75rem;">${m.seriesId}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `
+    : '<div style="color: #666; font-style: italic;">No normalized match inputs available.</div>';
+
   const htmlContent = `
     <!DOCTYPE html>
     <html>
@@ -215,7 +263,12 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
         <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.8rem; color: #333; background: #f8f9fa; border: 1px solid #eee; border-radius: 8px; padding: 10px;">
           ${evidenceSeries}
         </div>
-        <div style="margin-top: 10px; font-size: 0.8rem; color: #666;">Data source: GRID Central Data + Series State GraphQL.</div>
+
+        <h4 style="margin: 14px 0 6px 0;">Data sources</h4>
+        ${dataSourcesHtml}
+
+        <h4 style="margin: 14px 0 6px 0;">Raw inputs (normalized match sample)</h4>
+        ${rawInputsHtml}
       </section>
 
       <section>

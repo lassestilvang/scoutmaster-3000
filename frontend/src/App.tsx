@@ -762,9 +762,71 @@ function App() {
                 </div>
               </details>
 
-              <div style={{ marginTop: '10px', fontSize: '0.85rem', color: '#666' }}>
-                Data source: GRID Central Data + Series State GraphQL.
-              </div>
+              {report.dataSources && report.dataSources.length > 0 && (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 900, color: '#333' }}>Data sources</div>
+                  <ul style={{ margin: '8px 0 0 18px', color: '#333' }}>
+                    {report.dataSources.map((s) => (
+                      <li key={s.id} style={{ marginBottom: '6px' }}>
+                        <div style={{ fontWeight: 800 }}>
+                          {s.name}{' '}
+                          <span style={{ fontWeight: 700, color: s.used ? '#155724' : '#721c24' }}>
+                            ({s.used ? 'used' : 'not used'})
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#666' }}>{s.purpose}</div>
+                        {s.endpoint && (
+                          <div style={{ marginTop: '2px', fontSize: '0.8rem', color: '#666', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}>
+                            {s.endpoint}
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {report.rawInputs && report.rawInputs.matches && report.rawInputs.matches.length > 0 && (
+                <details style={{ marginTop: '12px' }}>
+                  <summary style={{ cursor: 'pointer', color: '#007bff', fontWeight: 700 }}>
+                    Show raw inputs (normalized match list)
+                  </summary>
+                  <div style={{ marginTop: '8px', fontSize: '0.85rem', color: '#666' }}>
+                    Showing {report.rawInputs.shownMatches} of {report.rawInputs.totalMatches} matches{report.rawInputs.truncated ? ' (truncated)' : ''}.
+                  </div>
+
+                  <div style={{ marginTop: '10px', overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
+                          <th style={{ padding: '10px 8px', color: '#666' }}>Date</th>
+                          <th style={{ padding: '10px 8px', color: '#666' }}>Map</th>
+                          <th style={{ padding: '10px 8px', color: '#666' }}>Result</th>
+                          <th style={{ padding: '10px 8px', color: '#666' }}>Score</th>
+                          <th style={{ padding: '10px 8px', color: '#666' }}>Opponent</th>
+                          <th style={{ padding: '10px 8px', color: '#666' }}>Series</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.rawInputs.matches.map((m) => (
+                          <tr key={m.matchId} style={{ borderBottom: '1px solid #f1f1f1' }}>
+                            <td style={{ padding: '10px 8px' }}>{formatDate(m.startTime)}</td>
+                            <td style={{ padding: '10px 8px', fontWeight: 800 }}>{m.mapName}</td>
+                            <td style={{ padding: '10px 8px', fontWeight: 900, color: m.result === 'W' ? '#28a745' : m.result === 'L' ? '#dc3545' : '#666' }}>
+                              {m.result}
+                            </td>
+                            <td style={{ padding: '10px 8px' }}>{m.teamScore}-{m.opponentScore}</td>
+                            <td style={{ padding: '10px 8px' }}>{m.opponentName}</td>
+                            <td style={{ padding: '10px 8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '0.8rem', color: '#333' }}>
+                              {m.seriesId}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              )}
             </section>
           )}
 
