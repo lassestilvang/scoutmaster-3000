@@ -293,6 +293,8 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
                   <th>Map</th>
                   <th>Played</th>
                   <th>Win Rate</th>
+                  <th>Map Picks</th>
+                  <th>Map Bans</th>
                   <th>Default Comp</th>
                 </tr>
               </thead>
@@ -305,6 +307,8 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
                       <td style="font-weight: bold;">${mp.mapName}</td>
                       <td>${mp.matchesPlayed}</td>
                       <td>${Math.round(mp.winRate * 100)}%</td>
+                      <td>${mp.mapPickCount ?? 0}</td>
+                      <td>${mp.mapBanCount ?? 0}</td>
                       <td>${defaultCompText}</td>
                     </tr>
                   `;
@@ -319,12 +323,53 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
 
       <div class="grid-2col">
         <section>
-          <h3>👥 Player Watchlist</h3>
-          <ul class="roster-list">
-            ${report.roster.length > 0 ? report.roster.map(p => `
-              <li class="roster-item"><span class="dot"></span>${p.name}</li>
-            `).join('') : '<li>No recent roster data.</li>'}
-          </ul>
+          <h3>👥 Player Tendencies</h3>
+
+          ${report.rosterStability ? `
+            <p style="margin: 0; color: #333;">
+              <strong>Roster stability:</strong> ${report.rosterStability.confidence}
+              <span style="color: #666;"> (based on ${report.rosterStability.matchesConsidered} match(es) with roster data)</span>
+            </p>
+          ` : ''}
+
+          ${report.playerTendencies && report.playerTendencies.length > 0 ? `
+            <table>
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>Matches</th>
+                  <th>Win Rate</th>
+                  <th>Top Maps</th>
+                  <th>Top Picks</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${report.playerTendencies.slice(0, 8).map(pt => {
+                  const topMaps = (pt.mapPerformance || []).slice(0, 2)
+                    .map(m => `${m.mapName} (${m.matchesPlayed}×, ${Math.round(m.winRate * 100)}%)`)
+                    .join(' • ');
+                  const topPicks = (pt.topPicks || []).slice(0, 3)
+                    .map(p => `${p.name} (${p.pickCount}×)`)
+                    .join(', ');
+                  return `
+                    <tr>
+                      <td style="font-weight: bold;">${pt.playerName}</td>
+                      <td>${pt.matchesPlayed}</td>
+                      <td>${Math.round(pt.winRate * 100)}%</td>
+                      <td>${topMaps || '—'}</td>
+                      <td>${topPicks || '—'}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          ` : `
+            <ul class="roster-list">
+              ${report.roster.length > 0 ? report.roster.map(p => `
+                <li class="roster-item"><span class="dot"></span>${p.name}</li>
+              `).join('') : '<li>No recent player data.</li>'}
+            </ul>
+          `}
         </section>
 
         <section class="how-to-win">

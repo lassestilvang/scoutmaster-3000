@@ -1,5 +1,11 @@
 import { gridGraphqlClient } from './data/gridGraphqlClient.js';
-import { normalizeCompositionStats, normalizeDraftStats, normalizeMapPlans, normalizeSeriesState } from './data/normalizer.js';
+import {
+  normalizeCompositionStats,
+  normalizeDraftStats,
+  normalizeMapPlans,
+  normalizePlayerDraftPicks,
+  normalizeSeriesState,
+} from './data/normalizer.js';
 import { ScoutingReport, Match } from '@scoutmaster-3000/shared';
 import { 
   calculateWinRate, 
@@ -7,6 +13,8 @@ import {
   generateHowToWin,
   calculateMapStats,
   identifyRecentRoster,
+  calculateRosterStability,
+  calculatePlayerTendencies,
   calculateAggressionProfile,
   calculateAverageScore
 } from './analysis/scoutingAnalysis.js';
@@ -18,7 +26,7 @@ async function generateReport(
   matches: Match[],
   teamRef: string,
   fallbackName: string,
-  extras?: Pick<ScoutingReport, 'draftStats' | 'compositions' | 'mapPlans'>,
+  extras?: Pick<ScoutingReport, 'draftStats' | 'compositions' | 'mapPlans' | 'rosterStability' | 'playerTendencies'>,
   game?: 'LOL' | 'VALORANT'
 ): Promise<ScoutingReport> {
   // Try to find the actual team name from the matches if possible
@@ -36,6 +44,8 @@ async function generateReport(
   const howToWin = generateHowToWin(matches, teamRef);
   const topMaps = calculateMapStats(matches, teamRef);
   const roster = identifyRecentRoster(matches, teamRef);
+  const rosterStability = extras?.rosterStability ?? calculateRosterStability(matches, teamRef);
+  const playerTendencies = extras?.playerTendencies;
   const aggression = calculateAggressionProfile(matches, teamRef);
   const avgScore = calculateAverageScore(matches, teamRef);
 
@@ -48,6 +58,8 @@ async function generateReport(
     topMaps,
     mapPlans: extras?.mapPlans,
     roster,
+    rosterStability,
+    playerTendencies,
     aggression,
     avgScore,
     matchesAnalyzed: matches.length,
@@ -77,7 +89,16 @@ export async function generateScoutingReportByName(teamName: string, limit: numb
     const draftStats = normalizeDraftStats(seriesStates, teamId);
     const compositions = normalizeCompositionStats(seriesStates, teamId);
     const mapPlans = normalizeMapPlans(seriesStates, teamId);
-    return generateReport(allMatches, teamId, actualTeamName, { draftStats, compositions, mapPlans }, game);
+    const playerDraftPicks = normalizePlayerDraftPicks(seriesStates, teamId);
+    const playerTendencies = calculatePlayerTendencies(allMatches, teamId, playerDraftPicks);
+    const rosterStability = calculateRosterStability(allMatches, teamId);
+    return generateReport(
+      allMatches,
+      teamId,
+      actualTeamName,
+      { draftStats, compositions, mapPlans, playerTendencies, rosterStability },
+      game
+    );
   } catch (error) {
     console.error('Error generating scouting report from real data, falling back to mock:', (error as any).message);
     // If we have a real team name, use it in the mock report
@@ -95,7 +116,15 @@ export async function generateScoutingReportById(teamId: string, limit: number =
     const draftStats = normalizeDraftStats(seriesStates, teamId);
     const compositions = normalizeCompositionStats(seriesStates, teamId);
     const mapPlans = normalizeMapPlans(seriesStates, teamId);
-    return generateReport(allMatches, teamId, `Team ${teamId}`, { draftStats, compositions, mapPlans });
+    const playerDraftPicks = normalizePlayerDraftPicks(seriesStates, teamId);
+    const playerTendencies = calculatePlayerTendencies(allMatches, teamId, playerDraftPicks);
+    const rosterStability = calculateRosterStability(allMatches, teamId);
+    return generateReport(
+      allMatches,
+      teamId,
+      `Team ${teamId}`,
+      { draftStats, compositions, mapPlans, playerTendencies, rosterStability }
+    );
   } catch (error) {
     console.error(`Error generating report for teamId ${teamId}, falling back to mock:`, (error as any).message);
     return generateMockReport(`Team ${teamId}`);
@@ -107,6 +136,11 @@ export async function generateScoutingReportById(teamId: string, limit: number =
  */
 function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT'): ScoutingReport {
   // Simple mock data for demo
+  const roster = [
+    { id: 'p1', name: 'MockPlayer1', teamId: 'mock' },
+    { id: 'p2', name: 'MockPlayer2', teamId: 'mock' }
+  ];
+
   return {
     opponentName: teamName,
     game,
@@ -135,9 +169,42 @@ function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT'): Scouti
         ],
       },
     ] : undefined,
-    roster: [
-      { id: 'p1', name: 'MockPlayer1', teamId: 'mock' },
-      { id: 'p2', name: 'MockPlayer2', teamId: 'mock' }
+    roster,
+    rosterStability: {
+      confidence: 'High',
+      matchesConsidered: 8,
+      corePlayers: roster,
+      uniquePlayersSeen: 2,
+    },
+    playerTendencies: [
+      {
+        playerId: 'p1',
+        playerName: 'MockPlayer1',
+        matchesPlayed: 8,
+        winRate: 0.63,
+        mapPerformance: [
+          { mapName: 'Ascent', matchesPlayed: 4, winRate: 0.75 },
+          { mapName: 'Bind', matchesPlayed: 2, winRate: 0.5 },
+        ],
+        topPicks: [
+          { name: 'Jett', type: 'AGENT', pickCount: 5, winRate: 0.6 },
+          { name: 'Sova', type: 'AGENT', pickCount: 3, winRate: 0.67 },
+        ]
+      },
+      {
+        playerId: 'p2',
+        playerName: 'MockPlayer2',
+        matchesPlayed: 8,
+        winRate: 0.63,
+        mapPerformance: [
+          { mapName: 'Ascent', matchesPlayed: 4, winRate: 0.75 },
+          { mapName: 'Bind', matchesPlayed: 2, winRate: 0.5 },
+        ],
+        topPicks: [
+          { name: 'Omen', type: 'AGENT', pickCount: 4, winRate: 0.5 },
+          { name: 'Killjoy', type: 'AGENT', pickCount: 3, winRate: 0.67 },
+        ]
+      },
     ],
     aggression: 'High',
     avgScore: 14,

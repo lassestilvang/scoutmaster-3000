@@ -42,6 +42,11 @@ export interface MapPlan {
   matchesPlayed: number;
   winRate: number; // 0 to 1
   /**
+   * Map veto / selection counts when available from draft actions.
+   */
+  mapPickCount?: number;
+  mapBanCount?: number;
+  /**
    * Common compositions observed on this map (e.g., VAL agent comps).
    * Optional because the underlying feed may not provide draft/composition data.
    */
@@ -50,6 +55,38 @@ export interface MapPlan {
    * Whether round-by-round site data (A/B hits, etc.) was available to compute site tendencies.
    */
   siteTendenciesAvailable?: boolean;
+}
+
+export interface PlayerMapPerformance {
+  mapName: string;
+  matchesPlayed: number;
+  winRate: number; // 0 to 1
+}
+
+export interface PlayerDraftableStat {
+  name: string;
+  type: CompositionKind;
+  pickCount: number;
+  winRate: number; // 0 to 1
+}
+
+export interface PlayerTendency {
+  playerId: string;
+  playerName: string;
+  matchesPlayed: number;
+  winRate: number; // 0 to 1
+  mapPerformance: PlayerMapPerformance[];
+  /**
+   * Best-effort: only available when draft actions attribute picks to a player.
+   */
+  topPicks?: PlayerDraftableStat[];
+}
+
+export interface RosterStability {
+  confidence: 'High' | 'Medium' | 'Low';
+  matchesConsidered: number;
+  corePlayers: Player[];
+  uniquePlayersSeen: number;
 }
 
 export interface DraftStats {

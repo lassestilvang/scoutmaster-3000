@@ -315,6 +315,7 @@ function App() {
                   {report.mapPlans.slice(0, 6).map((mp, i) => {
                     const defaultComp = mp.commonCompositions?.[0];
                     const variations = mp.commonCompositions?.slice(1, 3) || [];
+                    const hasVeto = (mp.mapPickCount || 0) > 0 || (mp.mapBanCount || 0) > 0;
                     return (
                       <div key={i} style={{ border: '1px solid #eee', borderRadius: '8px', padding: '12px 14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px' }}>
@@ -323,6 +324,12 @@ function App() {
                             Played {mp.matchesPlayed}× • Win rate {Math.round(mp.winRate * 100)}%
                           </div>
                         </div>
+
+                        {hasVeto && (
+                          <div style={{ marginTop: '6px', fontSize: '0.85rem', color: '#666' }}>
+                            <strong>Veto:</strong> picked {mp.mapPickCount || 0}× • banned {mp.mapBanCount || 0}×
+                          </div>
+                        )}
 
                         {defaultComp ? (
                           <div style={{ marginTop: '8px' }}>
@@ -361,29 +368,85 @@ function App() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
             {/* 3. Player Watchlist */}
             <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-              <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>👥 Player Watchlist</h3>
-              {report.roster.length > 0 ? (
-                <ul style={{ listStyle: 'none', padding: 0, marginTop: '15px' }}>
-                  {report.roster.map((p, i) => (
-                    <li key={i} style={{ 
-                      padding: '10px', 
-                      borderBottom: '1px solid #f9f9f9',
-                      display: 'flex',
-                      alignItems: 'center'
-                    }}>
-                      <span style={{ 
-                        width: '8px', 
-                        height: '8px', 
-                        backgroundColor: '#007bff', 
-                        borderRadius: '50%', 
-                        marginRight: '12px' 
-                      }}></span>
-                      <span style={{ fontWeight: '500' }}>{p.name}</span>
-                    </li>
-                  ))}
-                </ul>
+              <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>👥 Player Tendencies</h3>
+
+              {report.rosterStability && (
+                <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#333' }}>
+                  <strong>Roster stability:</strong>{' '}
+                  <span style={{
+                    marginLeft: '8px',
+                    padding: '3px 10px',
+                    borderRadius: '14px',
+                    fontSize: '0.85rem',
+                    fontWeight: 700,
+                    backgroundColor: report.rosterStability.confidence === 'High' ? '#d4edda' : report.rosterStability.confidence === 'Medium' ? '#fff3cd' : '#f8d7da',
+                    color: report.rosterStability.confidence === 'High' ? '#155724' : report.rosterStability.confidence === 'Medium' ? '#856404' : '#721c24'
+                  }}>
+                    {report.rosterStability.confidence}
+                  </span>
+                  <div style={{ marginTop: '6px', fontSize: '0.85rem', color: '#666' }}>
+                    Based on {report.rosterStability.matchesConsidered} match(es) with roster data • {report.rosterStability.uniquePlayersSeen} unique player(s) seen
+                  </div>
+                </div>
+              )}
+
+              {report.playerTendencies && report.playerTendencies.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '15px' }}>
+                  {report.playerTendencies.slice(0, 8).map((pt) => {
+                    const topMaps = pt.mapPerformance.slice(0, 2);
+                    const topPicks = pt.topPicks?.slice(0, 3) || [];
+                    return (
+                      <div key={pt.playerId} style={{ border: '1px solid #eee', borderRadius: '8px', padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px' }}>
+                          <div style={{ fontWeight: 700, color: '#333' }}>{pt.playerName}</div>
+                          <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                            {pt.matchesPlayed} match(es) • Win rate {Math.round(pt.winRate * 100)}%
+                          </div>
+                        </div>
+
+                        {topMaps.length > 0 && (
+                          <div style={{ marginTop: '8px', fontSize: '0.85rem', color: '#666' }}>
+                            <strong>Map split:</strong>{' '}
+                            {topMaps.map(m => `${m.mapName} (${m.matchesPlayed}×, ${Math.round(m.winRate * 100)}%)`).join(' • ')}
+                          </div>
+                        )}
+
+                        {topPicks.length > 0 && (
+                          <div style={{ marginTop: '6px', fontSize: '0.85rem', color: '#666' }}>
+                            <strong>Top picks:</strong>{' '}
+                            {topPicks.map(p => `${p.name} (${p.pickCount}×)`).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               ) : (
-                <p style={{ fontStyle: 'italic', color: '#666', marginTop: '15px' }}>No recent roster data available.</p>
+                <div style={{ marginTop: '15px' }}>
+                  {report.roster.length > 0 ? (
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                      {report.roster.map((p, i) => (
+                        <li key={i} style={{
+                          padding: '10px',
+                          borderBottom: '1px solid #f9f9f9',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}>
+                          <span style={{
+                            width: '8px',
+                            height: '8px',
+                            backgroundColor: '#007bff',
+                            borderRadius: '50%',
+                            marginRight: '12px'
+                          }}></span>
+                          <span style={{ fontWeight: '500' }}>{p.name}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p style={{ fontStyle: 'italic', color: '#666', marginTop: '15px' }}>No recent player data available.</p>
+                  )}
+                </div>
               )}
             </section>
 

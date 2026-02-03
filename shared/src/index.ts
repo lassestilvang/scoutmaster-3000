@@ -1,4 +1,13 @@
-import { StrategicInsight, MapStats, MapPlan, Player, DraftStats, CompositionStats } from './models.js';
+import {
+  StrategicInsight,
+  MapStats,
+  MapPlan,
+  Player,
+  DraftStats,
+  CompositionStats,
+  PlayerTendency,
+  RosterStability,
+} from './models.js';
 
 export interface ScoutingReport {
   opponentName: string;
@@ -9,6 +18,8 @@ export interface ScoutingReport {
   topMaps: MapStats[];
   mapPlans?: MapPlan[];
   roster: Player[];
+  rosterStability?: RosterStability;
+  playerTendencies?: PlayerTendency[];
   aggression: 'High' | 'Medium' | 'Low';
   avgScore: number;
   matchesAnalyzed: number;

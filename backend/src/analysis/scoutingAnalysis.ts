@@ -1,4 +1,13 @@
-import { Match, MapStats, Player, StrategicInsight } from '@scoutmaster-3000/shared';
+import {
+  Match,
+  MapStats,
+  Player,
+  StrategicInsight,
+  PlayerTendency,
+  PlayerMapPerformance,
+  PlayerDraftableStat,
+  RosterStability,
+} from '@scoutmaster-3000/shared';
 
 /**
  * Helper to find a team in a match by ID or Name.
@@ -66,6 +75,129 @@ export function identifyRecentRoster(matches: Match[], teamRef: string): Player[
   
   const team = findTeam(latestMatch, teamRef);
   return team?.players || [];
+}
+
+/**
+ * Estimates roster stability and returns a confidence score.
+ *
+ * This is best-effort because the feed may omit players for some matches.
+ */
+export function calculateRosterStability(matches: Match[], teamRef: string, maxMatches: number = 10): RosterStability | undefined {
+  if (matches.length === 0) return undefined;
+
+  const recent = [...matches]
+    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+    .slice(0, maxMatches);
+
+  let matchesConsidered = 0;
+  const rosterSizes: number[] = [];
+  const appearances: Record<string, { player: Player; count: number }> = {};
+
+  for (const m of recent) {
+    const team = findTeam(m, teamRef);
+    const players = team?.players;
+    if (!players || players.length === 0) continue;
+
+    matchesConsidered++;
+    rosterSizes.push(players.length);
+    for (const p of players) {
+      if (!appearances[p.id]) appearances[p.id] = { player: p, count: 0 };
+      appearances[p.id].count++;
+      // Keep latest name/teamId if they changed
+      appearances[p.id].player = p;
+    }
+  }
+
+  if (matchesConsidered === 0) return undefined;
+
+  const threshold = Math.ceil(matchesConsidered * 0.8);
+  const corePlayers = Object.values(appearances)
+    .filter(a => a.count >= threshold)
+    .map(a => a.player)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const uniquePlayersSeen = Object.keys(appearances).length;
+
+  const typicalRosterSize = rosterSizes.length > 0 ? Math.max(...rosterSizes) : corePlayers.length;
+
+  let confidence: 'High' | 'Medium' | 'Low' = 'Low';
+  // Heuristic:
+  // - High when we have enough samples and very low churn (unique players close to typical roster size)
+  // - Medium when we have a few samples and churn is still low
+  if (matchesConsidered >= 5 && uniquePlayersSeen <= typicalRosterSize + 1) confidence = 'High';
+  else if (matchesConsidered >= 3 && uniquePlayersSeen <= typicalRosterSize + 1) confidence = 'Medium';
+
+  return {
+    confidence,
+    matchesConsidered,
+    corePlayers,
+    uniquePlayersSeen,
+  };
+}
+
+/**
+ * Aggregates per-player tendencies from match participation.
+ *
+ * Notes:
+ * - Without per-player performance stats, this uses map win rates as a proxy.
+ * - If `draftPicksByPlayerId` is provided, includes best-effort pick tendencies.
+ */
+export function calculatePlayerTendencies(
+  matches: Match[],
+  teamRef: string,
+  draftPicksByPlayerId?: Record<string, PlayerDraftableStat[]>
+): PlayerTendency[] {
+  const byPlayer: Record<
+    string,
+    {
+      playerName: string;
+      matchesPlayed: number;
+      wins: number;
+      byMap: Record<string, { played: number; wins: number }>;
+    }
+  > = {};
+
+  for (const m of matches) {
+    const team = findTeam(m, teamRef);
+    const players = team?.players;
+    if (!players || players.length === 0) continue;
+
+    const won = !!team?.isWinner;
+    for (const p of players) {
+      if (!byPlayer[p.id]) {
+        byPlayer[p.id] = { playerName: p.name, matchesPlayed: 0, wins: 0, byMap: {} };
+      }
+      byPlayer[p.id].playerName = p.name;
+      byPlayer[p.id].matchesPlayed++;
+      if (won) byPlayer[p.id].wins++;
+
+      const mapName = m.mapName || 'Unknown';
+      if (!byPlayer[p.id].byMap[mapName]) byPlayer[p.id].byMap[mapName] = { played: 0, wins: 0 };
+      byPlayer[p.id].byMap[mapName].played++;
+      if (won) byPlayer[p.id].byMap[mapName].wins++;
+    }
+  }
+
+  const toMapPerf = (byMap: Record<string, { played: number; wins: number }>): PlayerMapPerformance[] => {
+    return Object.entries(byMap)
+      .map(([mapName, s]) => ({
+        mapName,
+        matchesPlayed: s.played,
+        winRate: s.played > 0 ? s.wins / s.played : 0,
+      }))
+      .sort((a, b) => b.matchesPlayed - a.matchesPlayed);
+  };
+
+  return Object.entries(byPlayer)
+    .map(([playerId, v]) => ({
+      playerId,
+      playerName: v.playerName,
+      matchesPlayed: v.matchesPlayed,
+      winRate: v.matchesPlayed > 0 ? v.wins / v.matchesPlayed : 0,
+      mapPerformance: toMapPerf(v.byMap),
+      topPicks: draftPicksByPlayerId?.[playerId]?.slice(0, 5),
+    }))
+    .sort((a, b) => b.matchesPlayed - a.matchesPlayed);
 }
 
 /**
