@@ -1,4 +1,5 @@
 import { gridGraphqlClient } from './data/gridGraphqlClient.js';
+import type { GridTeam } from './data/gridGraphqlClient.js';
 import {
   normalizeCompositionStats,
   normalizeDraftStats,
@@ -91,6 +92,27 @@ function normalizeQueryForSuggestions(query: string): string {
     .replace(/[^a-zA-Z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function pickBestTeamMatch(teams: GridTeam[], query: string): GridTeam {
+  if (teams.length === 0) {
+    throw new Error('pickBestTeamMatch: empty teams list');
+  }
+
+  const q = query.trim().toLowerCase();
+  const exact = teams.find(t => (t.name || '').trim().toLowerCase() === q);
+  if (exact) return exact;
+
+  const startsWith = teams.find(t => (t.name || '').toLowerCase().startsWith(q));
+  if (startsWith) return startsWith;
+
+  // Prefer shorter names when multiple contain the query.
+  const contains = teams
+    .filter(t => (t.name || '').toLowerCase().includes(q))
+    .sort((a, b) => (a.name || '').length - (b.name || '').length);
+  if (contains.length > 0) return contains[0];
+
+  return teams[0];
 }
 
 async function suggestTeams(query: string, game?: 'LOL' | 'VALORANT'): Promise<Array<{ id: string; name: string }>> {
@@ -232,14 +254,17 @@ export async function generateScoutingReportByName(
 ): Promise<ScoutingReport> {
   try {
     // 1. Find the team ID (optionally filter by game)
-    const teams = await gridGraphqlClient.findTeamsByName(teamName, 1, game);
+    // Important: query multiple candidates, then pick the best match.
+    // Querying only 1 and then filtering by game can produce false “not found” errors.
+    const teams = await gridGraphqlClient.findTeamsByName(teamName, 10, game);
     if (teams.length === 0) {
       const suggestions = await suggestTeams(teamName, game);
       throw new TeamNotFoundError('opponent', teamName, suggestions);
     }
 
-    const teamId = teams[0].id;
-    const actualTeamName = teams[0].name;
+    const selected = pickBestTeamMatch(teams, teamName);
+    const teamId = selected.id;
+    const actualTeamName = selected.name;
 
     // 2. Get full series states
     const seriesStatesRaw = await gridGraphqlClient.getFullSeriesByTeam(teamId, limit);
@@ -310,8 +335,8 @@ export async function generateMatchupScoutingReportByName(
 ): Promise<ScoutingReport> {
   try {
     const [ourTeams, opponentTeams] = await Promise.all([
-      gridGraphqlClient.findTeamsByName(ourTeamName, 1, game),
-      gridGraphqlClient.findTeamsByName(opponentTeamName, 1, game),
+      gridGraphqlClient.findTeamsByName(ourTeamName, 10, game),
+      gridGraphqlClient.findTeamsByName(opponentTeamName, 10, game),
     ]);
 
     if (ourTeams.length === 0 || opponentTeams.length === 0) {
@@ -321,10 +346,13 @@ export async function generateMatchupScoutingReportByName(
       throw new TeamNotFoundError(which, query, suggestions);
     }
 
-    const ourId = ourTeams[0].id;
-    const ourActualName = ourTeams[0].name;
-    const opponentId = opponentTeams[0].id;
-    const opponentActualName = opponentTeams[0].name;
+    const selectedOur = pickBestTeamMatch(ourTeams, ourTeamName);
+    const selectedOpp = pickBestTeamMatch(opponentTeams, opponentTeamName);
+
+    const ourId = selectedOur.id;
+    const ourActualName = selectedOur.name;
+    const opponentId = selectedOpp.id;
+    const opponentActualName = selectedOpp.name;
 
     const [ourSeriesStatesRaw, opponentSeriesStatesRaw] = await Promise.all([
       gridGraphqlClient.getFullSeriesByTeam(ourId, limit),

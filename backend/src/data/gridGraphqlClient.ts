@@ -503,11 +503,19 @@ export class GridGraphqlClient {
   async getFullSeriesByTeam(teamId: string, limit: number = 10): Promise<GridSeriesState[]> {
     const seriesInfos = await this.getRecentSeriesByTeam(teamId, limit);
     const states: GridSeriesState[] = [];
+    let failures = 0;
+    let lastError: unknown = undefined;
     
     for (const info of seriesInfos) {
       try {
         const state = await this.getSeriesState(info.id);
-        if (state) {
+        if (!state) {
+          failures++;
+          lastError = new Error('seriesState returned null/undefined');
+          continue;
+        }
+
+        {
           // Fallback to scheduled time if startedAt is missing
           if (!state.startedAt && info.startTimeScheduled) {
             state.startedAt = info.startTimeScheduled;
@@ -515,9 +523,20 @@ export class GridGraphqlClient {
           states.push(state);
         }
       } catch (error) {
+        failures++;
+        lastError = error;
         console.warn(`Could not fetch state for series ${info.id}:`, error);
       }
     }
+
+    // Important: if Central Data returned series IDs but *none* could be resolved via Series State,
+    // treat this as an upstream failure instead of silently returning an empty report.
+    if (seriesInfos.length > 0 && states.length === 0 && failures > 0) {
+      const msg = (lastError as any)?.message;
+      const suffix = typeof msg === 'string' && msg.trim() ? ` Last error: ${msg}` : '';
+      throw new Error(`Failed to fetch series state for ${failures}/${seriesInfos.length} series.${suffix}`);
+    }
+
     return states;
   }
 }
