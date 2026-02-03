@@ -1,10 +1,10 @@
 import { normalizeGameParam, toBoundedInt, validateTeamNameInput } from '../../../_lib/validation.js';
 
-import {
-  generateMatchupScoutingReportByName,
-  generateScoutingReportByName,
-} from '../../../../backend/dist/backend/src/scoutingService.js';
-import { generatePdf } from '../../../../backend/dist/backend/src/utils/pdfGenerator.js';
+// import {
+//   generateMatchupScoutingReportByName,
+//   generateScoutingReportByName,
+// } from '../../../../backend/dist/backend/src/scoutingService.js';
+// import { generatePdf } from '../../../../backend/dist/backend/src/utils/pdfGenerator.js';
 
 export const config = {
   // PDF generation needs more memory/time due to Chromium.
@@ -22,6 +22,10 @@ export default async function handler(req, res) {
     return res.end();
   }
 
+  res.statusCode = 200;
+  return res.end('PDF Generator Reachable');
+
+  /*
   const teamNameParam = typeof req.query?.teamName === 'string' ? req.query.teamName : '';
   const teamNameDecoded = teamNameParam ? decodeURIComponent(teamNameParam) : '';
   const teamNameValid = validateTeamNameInput(teamNameDecoded);
@@ -64,4 +68,5 @@ export default async function handler(req, res) {
     res.setHeader('content-type', 'application/json; charset=utf-8');
     return res.end(JSON.stringify({ error: 'Failed to generate PDF report' }));
   }
+  */
 }
