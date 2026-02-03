@@ -287,6 +287,55 @@ function App() {
 
   return (
     <div style={{ padding: '20px', maxWidth: compareMode ? '1180px' : '800px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f9f9f9', minHeight: '100vh', lineHeight: 1.4 }}>
+      {loading && (
+        <div
+          role="status"
+          aria-label="Generating report"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(255, 255, 255, 0.78)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+        >
+          <div style={{
+            background: 'white',
+            border: '1px solid #e2e8f0',
+            borderRadius: 16,
+            padding: 28,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.10)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <svg width="88" height="88" viewBox="0 0 50 50" aria-hidden>
+              <circle
+                cx="25"
+                cy="25"
+                r="20"
+                fill="none"
+                stroke="#007bff"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeDasharray="31.4 31.4"
+              >
+                <animateTransform
+                  attributeName="transform"
+                  type="rotate"
+                  from="0 25 25"
+                  to="360 25 25"
+                  dur="0.8s"
+                  repeatCount="indefinite"
+                />
+              </circle>
+            </svg>
+          </div>
+        </div>
+      )}
       <header style={{ textAlign: 'center', marginBottom: '40px' }}>
         <h1 style={{ color: '#333' }}>
           <a href="/" style={{ color: 'inherit', textDecoration: 'none' }}>
@@ -497,13 +546,13 @@ function App() {
                 padding: '12px 24px',
                 borderRadius: '8px',
                 border: 'none',
-                backgroundColor: '#007bff',
+                backgroundColor: loading ? '#9aa5b1' : '#007bff',
                 color: 'white',
-                cursor: 'pointer',
+                cursor: loading ? 'not-allowed' : 'pointer',
                 fontWeight: 'bold'
               }}
             >
-              {loading ? 'Analyzing...' : 'Generate Report'}
+              Generate Report
             </button>
           </form>
         </div>
