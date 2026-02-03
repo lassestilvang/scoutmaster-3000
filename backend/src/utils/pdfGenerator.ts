@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { ScoutingReport } from '@scoutmaster-3000/shared';
+import { ScoutingReport, getMapWikiUrl } from '@scoutmaster-3000/shared';
 
 function resolveLocalChromeExecutablePath(): string {
   const fromEnv = process.env.CHROME_EXECUTABLE_PATH;
@@ -65,6 +65,23 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
     return Number.isFinite(d.getTime()) ? d.toLocaleDateString() : iso;
   };
 
+  const escapeHtml = (s: string) => {
+    return s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
+  const renderMapHtml = (mapName: string) => {
+    const url = getMapWikiUrl(report.game as any, mapName);
+    const label = escapeHtml(mapName);
+    return url
+      ? `<a href="${url}" target="_blank" rel="noreferrer noopener">${label}</a>`
+      : label;
+  };
+
   const evidence = report.evidence;
   const evidenceStart = fmtDate(evidence?.startTime);
   const evidenceEnd = fmtDate(evidence?.endTime);
@@ -113,7 +130,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
           ${rawInputs.matches.slice(0, 10).map(m => `
             <tr>
               <td>${fmtDate(m.startTime)}</td>
-              <td style="font-weight: bold;">${m.mapName}</td>
+              <td style="font-weight: bold;">${renderMapHtml(m.mapName)}</td>
               <td style="font-weight: bold; color: ${m.result === 'W' ? '#28a745' : m.result === 'L' ? '#dc3545' : '#666'};">${m.result}</td>
               <td>${m.teamScore}-${m.opponentScore}</td>
               <td>${m.opponentName}</td>
@@ -344,7 +361,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
           <tbody>
             ${report.topMaps.map(m => `
               <tr>
-                <td style="font-weight: bold;">${m.mapName}</td>
+                <td style="font-weight: bold;">${renderMapHtml(m.mapName)}</td>
                 <td>${m.matchesPlayed}</td>
                 <td style="color: ${m.winRate >= 0.5 ? '#28a745' : '#dc3545'}; font-weight: bold;">
                   ${Math.round(m.winRate * 100)}%
@@ -442,7 +459,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
                   const defaultCompText = defaultComp ? `${defaultComp.members.join(', ')} (seen ${defaultComp.pickCount}×)` : '—';
                   return `
                     <tr>
-                      <td style="font-weight: bold;">${mp.mapName}</td>
+                      <td style="font-weight: bold;">${renderMapHtml(mp.mapName)}</td>
                       <td>${mp.matchesPlayed}</td>
                       <td>${Math.round(mp.winRate * 100)}%</td>
                       <td>${mp.mapPickCount ?? 0}</td>
@@ -485,7 +502,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
               <tbody>
                 ${report.playerTendencies.slice(0, 8).map(pt => {
                   const topMaps = (pt.mapPerformance || []).slice(0, 2)
-                    .map(m => `${m.mapName} (${m.matchesPlayed}×, ${Math.round(m.winRate * 100)}%)`)
+                    .map(m => `${renderMapHtml(m.mapName)} (${m.matchesPlayed}×, ${Math.round(m.winRate * 100)}%)`)
                     .join(' • ');
                   const topPicks = (pt.topPicks || []).slice(0, 3)
                     .map(p => `${p.name} (${p.pickCount}×)`)

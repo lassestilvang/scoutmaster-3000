@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ScoutingReport } from '@scoutmaster-3000/shared';
+import { ScoutingReport, getMapWikiUrl } from '@scoutmaster-3000/shared';
 
 type TeamSuggestion = { id: string; name: string };
 type DemoTeam = { id: string; name: string };
@@ -23,6 +23,17 @@ function App() {
   const [demoTeams, setDemoTeams] = useState<DemoTeam[]>([]);
   const [demoTeamsLoading, setDemoTeamsLoading] = useState(false);
   const [demoTeamsError, setDemoTeamsError] = useState<string | null>(null);
+
+  const renderMapLink = (game: 'LOL' | 'VALORANT' | undefined, mapName: string) => {
+    const url = getMapWikiUrl(game, mapName);
+    return url ? (
+      <a href={url} target="_blank" rel="noreferrer noopener" style={{ color: '#007bff', textDecoration: 'none' }}>
+        {mapName}
+      </a>
+    ) : (
+      mapName
+    );
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -619,7 +630,7 @@ function App() {
                     <tbody>
                       {r.topMaps.slice(0, 5).map((m, i) => (
                         <tr key={i} style={{ borderBottom: '1px solid #f1f1f1' }}>
-                          <td style={{ padding: '10px 8px', fontWeight: 800 }}>{m.mapName}</td>
+                          <td style={{ padding: '10px 8px', fontWeight: 800 }}>{renderMapLink((r.game || selectedGame) as any, m.mapName)}</td>
                           <td style={{ padding: '10px 8px' }}>{m.matchesPlayed}</td>
                           <td style={{ padding: '10px 8px', fontWeight: 800, color: m.winRate >= 0.5 ? '#28a745' : '#dc3545' }}>{Math.round(m.winRate * 100)}%</td>
                         </tr>
@@ -800,7 +811,7 @@ function App() {
                         {report.rawInputs.matches.map((m) => (
                           <tr key={m.matchId} style={{ borderBottom: '1px solid #f1f1f1' }}>
                             <td style={{ padding: '10px 8px' }}>{formatDate(m.startTime)}</td>
-                            <td style={{ padding: '10px 8px', fontWeight: 800 }}>{m.mapName}</td>
+                            <td style={{ padding: '10px 8px', fontWeight: 800 }}>{renderMapLink((report.game || selectedGame) as any, m.mapName)}</td>
                             <td style={{ padding: '10px 8px', fontWeight: 900, color: m.result === 'W' ? '#28a745' : m.result === 'L' ? '#dc3545' : '#666' }}>
                               {m.result}
                             </td>
@@ -849,7 +860,7 @@ function App() {
               <tbody>
                 {report.topMaps.map((m, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #f1f1f1' }}>
-                    <td style={{ padding: '12px 8px', fontWeight: 'bold' }}>{m.mapName}</td>
+                    <td style={{ padding: '12px 8px', fontWeight: 'bold' }}>{renderMapLink((report.game || selectedGame) as any, m.mapName)}</td>
                     <td style={{ padding: '12px 8px' }}>{m.matchesPlayed}</td>
                     <td style={{ padding: '12px 8px', color: m.winRate >= 0.5 ? '#28a745' : '#dc3545', fontWeight: 'bold' }}>
                       {Math.round(m.winRate * 100)}%
@@ -932,7 +943,7 @@ function App() {
                     return (
                       <div key={i} style={{ border: '1px solid #eee', borderRadius: '8px', padding: '12px 14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px' }}>
-                          <div style={{ fontWeight: 700, color: '#333' }}>{mp.mapName}</div>
+                          <div style={{ fontWeight: 700, color: '#333' }}>{renderMapLink('VALORANT', mp.mapName)}</div>
                           <div style={{ fontSize: '0.85rem', color: '#666' }}>
                             Played {mp.matchesPlayed}× • Win rate {Math.round(mp.winRate * 100)}%
                           </div>
@@ -1021,7 +1032,12 @@ function App() {
                         {topMaps.length > 0 && (
                           <div style={{ marginTop: '8px', fontSize: '0.85rem', color: '#666' }}>
                             <strong>Map split:</strong>{' '}
-                            {topMaps.map(m => `${m.mapName} (${m.matchesPlayed}×, ${Math.round(m.winRate * 100)}%)`).join(' • ')}
+                            {topMaps.map((m, idx) => (
+                              <span key={`${pt.playerId}-map-${m.mapName}-${idx}`}>
+                                {idx > 0 ? ' • ' : ''}
+                                {renderMapLink((report.game || selectedGame) as any, m.mapName)} ({m.matchesPlayed}×, {Math.round(m.winRate * 100)}%)
+                              </span>
+                            ))}
                           </div>
                         )}
 

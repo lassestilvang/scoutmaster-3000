@@ -58,3 +58,4 @@ export interface ScoutingReport {
 }
 
 export * from './models.js';
+export * from './wikiLinks.js';
