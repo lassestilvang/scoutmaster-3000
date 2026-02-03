@@ -4,10 +4,7 @@
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/**/*.js": {
-      "includeFiles": [
-        "backend/dist/**",
-        "shared/dist/**"
-      ]
+      "includeFiles": "{backend,shared}/dist/**"
     }
   },
   "rewrites": [
