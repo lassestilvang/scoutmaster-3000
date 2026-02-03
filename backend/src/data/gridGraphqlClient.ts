@@ -111,6 +111,7 @@ export class GridGraphqlClient {
   private fetchImpl: FetchImpl;
   private cacheDir?: string;
   private enableDiskCache: boolean;
+  private enableKvCache: boolean;
   private kvClientPromise?: Promise<any | undefined>;
 
   constructor(
@@ -119,12 +120,14 @@ export class GridGraphqlClient {
       fetchImpl?: FetchImpl;
       cacheDir?: string;
       enableDiskCache?: boolean;
+      enableKvCache?: boolean;
       ttlMs?: number;
     }
   ) {
     this.apiKey = apiKey;
     this.fetchImpl = opts?.fetchImpl ?? fetch;
     this.enableDiskCache = opts?.enableDiskCache ?? true;
+    this.enableKvCache = opts?.enableKvCache ?? true;
     this.cacheDir = opts?.cacheDir;
     if (typeof opts?.ttlMs === 'number' && Number.isFinite(opts.ttlMs) && opts.ttlMs > 0) {
       this.defaultTtl = opts.ttlMs;
@@ -152,6 +155,7 @@ export class GridGraphqlClient {
   }
 
   private getKvEnv(): { url: string; token: string } | undefined {
+    if (!this.enableKvCache) return undefined;
     // Supports both Vercel KV integration env vars and Upstash env vars.
     const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
     const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -404,13 +408,31 @@ export class GridGraphqlClient {
     if (!game) return nodes;
 
     const matchers = (n: GridTeam) => {
-      const wanted = game === 'LOL' ? ['League of Legends', 'LOL', 'LoL'] : ['Valorant', 'VALORANT'];
-      const hasTitle = (t?: { name?: string } | null) => !!t && wanted.includes(t.name || '');
-      const anyTitles = Array.isArray(n.titles) && n.titles.some(t => hasTitle(t));
-      return hasTitle(n.title as any) || anyTitles;
+      const rawNames: string[] = [];
+      if (n.title && typeof (n.title as any).name === 'string') rawNames.push((n.title as any).name);
+      if (Array.isArray(n.titles)) {
+        for (const t of n.titles) {
+          if (t && typeof (t as any).name === 'string') rawNames.push((t as any).name);
+        }
+      }
+
+      // If the API doesn't provide title metadata, don't filter — better to return candidates
+      // than to produce false “not found” errors.
+      if (rawNames.length === 0) return true;
+
+      const names = rawNames.map(s => String(s).toLowerCase());
+      if (game === 'VALORANT') {
+        return names.some(n => n.includes('valorant') || /\bvct\b/i.test(n));
+      }
+
+      // LOL
+      return names.some(n => n.includes('league of legends') || /\blol\b/i.test(n));
     };
 
-    return nodes.filter(matchers);
+    const filtered = nodes.filter(matchers);
+    // If filtering eliminated everything, fall back to the unfiltered candidates.
+    // This avoids breaking known-good queries when GRID introduces new title naming.
+    return filtered.length > 0 ? filtered : nodes;
   }
 
   /**

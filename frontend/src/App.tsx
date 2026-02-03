@@ -19,10 +19,8 @@ function App() {
   const [compareMode, setCompareMode] = useState(false);
   const [error, setError] = useState<{ message: string; suggestions?: TeamSuggestion[] } | null>(null);
   const [hydratedFromUrl, setHydratedFromUrl] = useState(false);
-
   const [demoTeams, setDemoTeams] = useState<DemoTeam[]>([]);
   const [demoTeamsLoading, setDemoTeamsLoading] = useState(false);
-  const [demoTeamsError, setDemoTeamsError] = useState<string | null>(null);
 
   const renderMapLink = (game: 'LOL' | 'VALORANT' | undefined, mapName: string) => {
     const url = getMapWikiUrl(game, mapName);
@@ -34,33 +32,6 @@ function App() {
       mapName
     );
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    setDemoTeamsLoading(true);
-    setDemoTeamsError(null);
-    fetch(`/api/demo-teams?game=${selectedGame.toLowerCase()}`)
-      .then((res) => res.json())
-      .then((data: any) => {
-        if (cancelled) return;
-        const teams = Array.isArray(data?.teams) ? data.teams : [];
-        setDemoTeams(teams);
-      })
-      .catch((err) => {
-        console.error('Error fetching demo teams:', err);
-        if (cancelled) return;
-        setDemoTeams([]);
-        setDemoTeamsError('Could not load verified demo teams.');
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setDemoTeamsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedGame]);
 
   const buildShareUrl = (opts: {
     game: 'LOL' | 'VALORANT';
@@ -110,6 +81,26 @@ function App() {
       .then((data) => setHealth(data))
       .catch((err) => console.error('Error fetching health:', err));
   }, []);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    setDemoTeamsLoading(true);
+    fetch(`/api/demo-teams?game=${selectedGame.toLowerCase()}`, { signal: ac.signal })
+      .then((res) => res.json())
+      .then((data) => {
+        const teams = Array.isArray(data?.teams) ? data.teams : [];
+        setDemoTeams(teams);
+      })
+      .catch((err) => {
+        // AbortError is expected during fast toggles.
+        if (err && err.name === 'AbortError') return;
+        console.error('Error fetching demo teams:', err);
+        setDemoTeams([]);
+      })
+      .finally(() => setDemoTeamsLoading(false));
+
+    return () => ac.abort();
+  }, [selectedGame]);
 
   useEffect(() => {
     if (teamName.length < 2) {
@@ -345,6 +336,7 @@ function App() {
               <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: 700 }}>Guided demo</span>
               <select
                 aria-label="Guided demo team"
+                key={selectedGame}
                 defaultValue=""
                 disabled={demoTeamsLoading || demoTeams.length === 0}
                 onChange={(e) => {
@@ -352,14 +344,15 @@ function App() {
                   if (!v) return;
                   setTeamName(v);
                   setError(null);
+                  if (!compareMode) void runScout({ team: v, game: selectedGame });
                 }}
                 style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ccc', minWidth: 200 }}
               >
                 <option value="">
                   {demoTeamsLoading
-                    ? 'Loading verified teams…'
+                    ? 'Loading demo teams…'
                     : demoTeams.length === 0
-                      ? 'No verified demo teams available'
+                      ? 'No demo teams available'
                       : 'Try an example team…'}
                 </option>
                 {demoTeams.map((t) => (
@@ -375,18 +368,13 @@ function App() {
                 const pick = demoTeams[Math.floor(Math.random() * demoTeams.length)];
                 setTeamName(pick.name);
                 setError(null);
+                if (!compareMode) void runScout({ team: pick.name, game: selectedGame });
               }}
-              disabled={demoTeamsLoading || demoTeams.length === 0}
+              disabled={demoTeams.length === 0}
               style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #ccc', background: 'white', cursor: 'pointer', fontWeight: 700 }}
             >
               Random example
             </button>
-
-            {demoTeamsError && (
-              <span style={{ fontSize: '0.82rem', color: '#856404', fontWeight: 700 }}>
-                {demoTeamsError}
-              </span>
-            )}
 
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
               <input
@@ -1100,58 +1088,59 @@ function App() {
                   </div>
                 ))}
               </div>
-
-              {report.howToWinEngine && report.howToWinEngine.candidates && report.howToWinEngine.candidates.length > 0 && (
-                <details style={{
-                  marginTop: '16px',
-                  backgroundColor: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.18)',
-                  borderRadius: '10px',
-                  padding: '12px 12px'
-                }}>
-                  <summary style={{ cursor: 'pointer', fontWeight: 800 }}>How we scored these tips</summary>
-
-                  <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>
-                    <strong>Formula:</strong> {report.howToWinEngine.formula}
-                  </div>
-
-                  <div style={{ overflowX: 'auto', marginTop: '10px' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.22)' }}>
-                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Status</th>
-                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Rule</th>
-                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Impact</th>
-                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>W</th>
-                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>E</th>
-                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Conf</th>
-                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Candidate</th>
-                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Why not picked</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {report.howToWinEngine.candidates.slice(0, 12).map((c) => (
-                          <tr key={c.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
-                            <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{c.status}</td>
-                            <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{c.rule}</td>
-                            <td style={{ padding: '8px 6px', fontWeight: 800 }}>{c.breakdown.impact}</td>
-                            <td style={{ padding: '8px 6px' }}>{Math.round(c.breakdown.weaknessSeverity * 100)}%</td>
-                            <td style={{ padding: '8px 6px' }}>{Math.round(c.breakdown.exploitability * 100)}%</td>
-                            <td style={{ padding: '8px 6px' }}>{c.breakdown.confidence}</td>
-                            <td style={{ padding: '8px 6px', minWidth: 220 }}>
-                              <div style={{ fontWeight: 700 }}>{c.insight}</div>
-                              <div style={{ marginTop: '2px', color: 'rgba(255,255,255,0.75)', fontStyle: 'italic' }}>{c.evidence}</div>
-                            </td>
-                            <td style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.8)' }}>{c.whyNotSelected || '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </details>
-              )}
             </section>
           </div>
+
+          {report.howToWinEngine && report.howToWinEngine.candidates && report.howToWinEngine.candidates.length > 0 && (
+            <section style={{ backgroundColor: '#007bff', color: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', marginTop: '20px' }}>
+              <details style={{
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.18)',
+                borderRadius: '10px',
+                padding: '12px 12px'
+              }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 800 }}>How we scored these tips</summary>
+
+                <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>
+                  <strong>Formula:</strong> {report.howToWinEngine.formula}
+                </div>
+
+                <div style={{ overflowX: 'auto', marginTop: '10px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.22)' }}>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Status</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Rule</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Impact</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>W</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>E</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Conf</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Candidate</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Why not picked</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.howToWinEngine.candidates.slice(0, 12).map((c) => (
+                        <tr key={c.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
+                          <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{c.status}</td>
+                          <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{c.rule}</td>
+                          <td style={{ padding: '8px 6px', fontWeight: 800 }}>{c.breakdown.impact}</td>
+                          <td style={{ padding: '8px 6px' }}>{Math.round(c.breakdown.weaknessSeverity * 100)}%</td>
+                          <td style={{ padding: '8px 6px' }}>{Math.round(c.breakdown.exploitability * 100)}%</td>
+                          <td style={{ padding: '8px 6px' }}>{c.breakdown.confidence}</td>
+                          <td style={{ padding: '8px 6px', minWidth: 220 }}>
+                            <div style={{ fontWeight: 700 }}>{c.insight}</div>
+                            <div style={{ marginTop: '2px', color: 'rgba(255,255,255,0.75)', fontStyle: 'italic' }}>{c.evidence}</div>
+                          </td>
+                          <td style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.8)' }}>{c.whyNotSelected || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            </section>
+          )}
         </div>
       ) : null}
 

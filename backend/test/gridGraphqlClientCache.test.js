@@ -23,6 +23,7 @@ test('GridGraphqlClient coalesces concurrent identical requests', async () => {
   const client = new GridGraphqlClient('api-key', {
     fetchImpl,
     enableDiskCache: false,
+    enableKvCache: false,
   });
 
   const [a, b] = await Promise.all([
@@ -51,6 +52,7 @@ test('GridGraphqlClient persists cache to disk across instances', async () => {
       fetchImpl: fetchA,
       cacheDir,
       enableDiskCache: true,
+      enableKvCache: false,
       ttlMs: 60_000,
     });
 
@@ -68,6 +70,7 @@ test('GridGraphqlClient persists cache to disk across instances', async () => {
       fetchImpl: fetchB,
       cacheDir,
       enableDiskCache: true,
+      enableKvCache: false,
       ttlMs: 60_000,
     });
 

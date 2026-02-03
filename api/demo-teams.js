@@ -1,10 +1,33 @@
 import { normalizeGameParam } from './_lib/validation.js';
 
 import {
-  generateScoutingReportById,
-  searchTeams,
+  generateScoutingReportByName,
+  isTeamNotFoundError,
 } from '../backend/dist/backend/src/scoutingService.js';
 
+const HARD_CODED_DEMO_TEAMS = {
+  VALORANT: [
+    // Cloud9 Hackathon: keep Cloud9 first.
+    { id: 'valorant:cloud9', name: 'Cloud9' },
+    { id: 'valorant:sentinels', name: 'Sentinels' },
+    { id: 'valorant:g2-esports', name: 'G2 Esports' },
+    { id: 'valorant:evil-geniuses', name: 'Evil Geniuses' },
+    { id: 'valorant:edward-gaming', name: 'EDward Gaming' },
+    { id: 'valorant:team-heretics', name: 'Team Heretics' },
+  ],
+  LOL: [
+    // Cloud9 Hackathon: keep Cloud9 Kia first.
+    { id: 'lol:cloud9-kia', name: 'Cloud9 Kia' },
+    { id: 'lol:fnatic', name: 'Fnatic' },
+    { id: 'lol:g2-esports', name: 'G2 Esports' },
+    { id: 'lol:t1', name: 'T1' },
+    { id: 'lol:geng-esports', name: 'Gen.G Esports' },
+  ],
+};
+
+// Cache validated demo teams so users can never pick an example that yields an empty report.
+// - Memory cache: fast + avoids bursts
+// - KV cache (Upstash/Vercel KV): persists across serverless invocations
 let memCache = new Map();
 
 function getKvEnv() {
@@ -26,7 +49,8 @@ async function getKv() {
 }
 
 function kvKey(gameEnum) {
-  return `scoutmaster:demoTeams:v1:${gameEnum || 'any'}`;
+  // Bump version whenever validation logic or hard-coded inputs change.
+  return `scoutmaster:demoTeams:v2:${gameEnum || 'any'}`;
 }
 
 async function readCached(gameEnum) {
@@ -52,7 +76,7 @@ async function readCached(gameEnum) {
 
 async function writeCached(gameEnum, teams) {
   const k = kvKey(gameEnum);
-  // Short mem cache to prevent repeated discovery bursts.
+  // Short mem cache to prevent repeated validation bursts.
   memCache.set(k, { data: teams, expiresAt: Date.now() + 5 * 60_000 });
 
   const kv = await getKv();
@@ -66,41 +90,26 @@ async function writeCached(gameEnum, teams) {
   }
 }
 
-async function discoverDemoTeams(gameEnum) {
-  // Seed queries designed to quickly find *some* teams for the selected game.
-  // We validate each candidate by probing that it yields real matches (not mock mode).
-  const seeds = ['a', 'e', 'i', 'o', 't', 'n', 's', 'r'];
-
-  const candidates = [];
-  const seen = new Set();
-
-  for (const q of seeds) {
-    const teams = await searchTeams(q, gameEnum);
-    for (const t of teams) {
-      if (!t || !t.id || !t.name) continue;
-      if (seen.has(t.id)) continue;
-      seen.add(t.id);
-      candidates.push(t);
-      if (candidates.length >= 40) break;
-    }
-    if (candidates.length >= 40) break;
-  }
+async function validateTeamsForGame(gameEnum) {
+  const base = gameEnum === 'VALORANT'
+    ? HARD_CODED_DEMO_TEAMS.VALORANT
+    : HARD_CODED_DEMO_TEAMS.LOL;
 
   const out = [];
-  const maxAttempts = 28;
   const perTeamSeriesLimit = 6;
 
-  for (let i = 0; i < candidates.length && i < maxAttempts; i++) {
-    const cand = candidates[i];
+  for (const t of base) {
     try {
-      const report = await generateScoutingReportById(cand.id, perTeamSeriesLimit);
+      const report = await generateScoutingReportByName(t.name, perTeamSeriesLimit, gameEnum);
       const matchesAnalyzed = typeof report?.matchesAnalyzed === 'number' ? report.matchesAnalyzed : 0;
       if (report && report.isMockData === false && matchesAnalyzed > 0) {
-        out.push({ id: cand.id, name: report.opponentName || cand.name });
-        if (out.length >= 8) break;
+        out.push({ id: t.id, name: report.opponentName || t.name });
       }
-    } catch {
-      // Skip candidate.
+    } catch (e) {
+      if (isTeamNotFoundError(e)) {
+        continue;
+      }
+      // Any other error: skip this team (fail-closed).
     }
   }
 
@@ -108,7 +117,7 @@ async function discoverDemoTeams(gameEnum) {
 }
 
 export const config = {
-  // Discovery may do multiple upstream calls.
+  // Validation may do multiple upstream calls.
   maxDuration: 60,
   memory: 1024,
 };
@@ -129,20 +138,29 @@ export default async function handler(req, res) {
     if (cached) {
       res.statusCode = 200;
       res.setHeader('content-type', 'application/json; charset=utf-8');
+      res.setHeader('cache-control', 'public, max-age=300');
       return res.end(JSON.stringify({ game: gameEnum || null, teams: cached }));
     }
 
-    const teams = await discoverDemoTeams(gameEnum);
+    const teams = gameEnum === 'VALORANT' || gameEnum === 'LOL'
+      ? await validateTeamsForGame(gameEnum)
+      : [
+        ...(await validateTeamsForGame('VALORANT')),
+        ...(await validateTeamsForGame('LOL')),
+      ];
+
     await writeCached(gameEnum, teams);
 
     res.statusCode = 200;
     res.setHeader('content-type', 'application/json; charset=utf-8');
+    res.setHeader('cache-control', 'public, max-age=300');
     return res.end(JSON.stringify({ game: gameEnum || null, teams }));
   } catch (error) {
-    console.error('Error discovering demo teams:', (error && error.message) || error);
+    console.error('Error building demo teams list:', (error && error.message) || error);
     res.statusCode = 200;
     res.setHeader('content-type', 'application/json; charset=utf-8');
-    // Fail-open with empty list: guided demo will not show invalid teams.
+    // Fail-closed: guided demo should not show invalid teams.
+    res.setHeader('cache-control', 'public, max-age=60');
     return res.end(JSON.stringify({ game: gameEnum || null, teams: [] }));
   }
 }
