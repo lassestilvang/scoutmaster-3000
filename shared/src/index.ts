@@ -1,5 +1,6 @@
 import {
   StrategicInsight,
+  HowToWinEngineResult,
   MapStats,
   MapPlan,
   Player,
@@ -21,6 +22,10 @@ export interface ScoutingReport {
   evidence: ReportEvidence;
   keyInsights: string[];
   howToWin: StrategicInsight[];
+  /**
+   * Optional transparency payload: ranked candidates + scoring breakdown.
+   */
+  howToWinEngine?: HowToWinEngineResult;
   topMaps: MapStats[];
   mapPlans?: MapPlan[];
   roster: Player[];

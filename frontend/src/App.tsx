@@ -546,6 +546,56 @@ function App() {
                   </div>
                 ))}
               </div>
+
+              {report.howToWinEngine && report.howToWinEngine.candidates && report.howToWinEngine.candidates.length > 0 && (
+                <details style={{
+                  marginTop: '16px',
+                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: '10px',
+                  padding: '12px 12px'
+                }}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 800 }}>How we scored these tips</summary>
+
+                  <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>
+                    <strong>Formula:</strong> {report.howToWinEngine.formula}
+                  </div>
+
+                  <div style={{ overflowX: 'auto', marginTop: '10px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.22)' }}>
+                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Status</th>
+                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Rule</th>
+                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Impact</th>
+                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>W</th>
+                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>E</th>
+                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Conf</th>
+                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Candidate</th>
+                          <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Why not picked</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.howToWinEngine.candidates.slice(0, 12).map((c) => (
+                          <tr key={c.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
+                            <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{c.status}</td>
+                            <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{c.rule}</td>
+                            <td style={{ padding: '8px 6px', fontWeight: 800 }}>{c.breakdown.impact}</td>
+                            <td style={{ padding: '8px 6px' }}>{Math.round(c.breakdown.weaknessSeverity * 100)}%</td>
+                            <td style={{ padding: '8px 6px' }}>{Math.round(c.breakdown.exploitability * 100)}%</td>
+                            <td style={{ padding: '8px 6px' }}>{c.breakdown.confidence}</td>
+                            <td style={{ padding: '8px 6px', minWidth: 220 }}>
+                              <div style={{ fontWeight: 700 }}>{c.insight}</div>
+                              <div style={{ marginTop: '2px', color: 'rgba(255,255,255,0.75)', fontStyle: 'italic' }}>{c.evidence}</div>
+                            </td>
+                            <td style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.8)' }}>{c.whyNotSelected || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              )}
             </section>
           </div>
         </div>

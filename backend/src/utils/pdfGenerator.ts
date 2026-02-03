@@ -423,6 +423,44 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
         </section>
       </div>
 
+      ${report.howToWinEngine && report.howToWinEngine.candidates && report.howToWinEngine.candidates.length > 0 ? `
+        <section>
+          <h3>🧮 How the “How to Win” engine scored candidates</h3>
+          <p style="margin: 0; font-size: 0.85rem; color: #666;"><strong>Formula:</strong> ${report.howToWinEngine.formula}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Rule</th>
+                <th>Impact</th>
+                <th>W</th>
+                <th>E</th>
+                <th>Conf</th>
+                <th>Candidate</th>
+                <th>Why not picked</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${report.howToWinEngine.candidates.slice(0, 12).map(c => `
+                <tr>
+                  <td>${c.status}</td>
+                  <td>${c.rule}</td>
+                  <td style="font-weight: bold;">${c.breakdown.impact}</td>
+                  <td>${Math.round(c.breakdown.weaknessSeverity * 100)}%</td>
+                  <td>${Math.round(c.breakdown.exploitability * 100)}%</td>
+                  <td>${c.breakdown.confidence}</td>
+                  <td>
+                    <div style="font-weight: 700;">${c.insight}</div>
+                    <div style="margin-top: 2px; color: #666; font-size: 0.8rem; font-style: italic;">${c.evidence}</div>
+                  </td>
+                  <td style="color: #666; font-size: 0.8rem;">${c.whyNotSelected || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </section>
+      ` : ''}
+
       <footer>
         <p>© 2026 ScoutMaster 3000 - Generated on ${new Date().toLocaleDateString()}</p>
       </footer>

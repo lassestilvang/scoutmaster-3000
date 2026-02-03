@@ -31,6 +31,63 @@ export interface StrategicInsight {
   evidence: string;
 }
 
+export interface HowToWinScoreBreakdown {
+  /**
+   * 0..1 — how severe the weakness/opportunity is.
+   */
+  weaknessSeverity: number;
+  /**
+   * 0..1 — how actionable / exploitable it is for a coach (sample size, clarity, etc.).
+   */
+  exploitability: number;
+  /**
+   * Confidence classification used for the scoring multiplier.
+   */
+  confidence: Confidence;
+  /**
+   * Numeric multiplier derived from `confidence`.
+   */
+  confidenceFactor: number;
+  /**
+   * Final impact score (0..100-ish). This is what we sort on.
+   */
+  impact: number;
+}
+
+export type HowToWinCandidateStatus =
+  | 'Selected'
+  | 'NotSelected'
+  | 'LowConfidenceSelected'
+  | 'LowConfidenceNotSelected';
+
+export interface HowToWinCandidate {
+  id: string;
+  rule: string;
+  insight: string;
+  evidence: string;
+  status: HowToWinCandidateStatus;
+  breakdown: HowToWinScoreBreakdown;
+  /**
+   * Populated for non-selected candidates to explain why they were not chosen.
+   */
+  whyNotSelected?: string;
+}
+
+export interface HowToWinEngineResult {
+  /**
+   * The selected top 3–5 tips (mirrors `ScoutingReport.howToWin`).
+   */
+  selected: StrategicInsight[];
+  /**
+   * Full candidate list used for transparency / debugging / UI.
+   */
+  candidates: HowToWinCandidate[];
+  /**
+   * A short string describing the scoring formula.
+   */
+  formula: string;
+}
+
 export type Confidence = 'High' | 'Medium' | 'Low';
 
 export interface WinRateTrend {

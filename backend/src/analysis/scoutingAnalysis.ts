@@ -3,6 +3,8 @@ import {
   MapStats,
   Player,
   StrategicInsight,
+  HowToWinEngineResult,
+  HowToWinCandidate,
   PlayerTendency,
   PlayerMapPerformance,
   PlayerDraftableStat,
@@ -343,93 +345,280 @@ export function generateScoutingInsights(matches: Match[], teamRef: string): str
 }
 
 /**
- * Generates strategic "How to Win" recommendations using a rule-based engine.
+ * Generates strategic "How to Win" recommendations using a ranked, testable engine.
  */
-export function generateHowToWin(matches: Match[], teamRef: string): StrategicInsight[] {
-  if (matches.length === 0) return [{ insight: 'Gather more data', evidence: '0 matches found' }];
+function clamp01(x: number): number {
+  if (!Number.isFinite(x)) return 0;
+  if (x < 0) return 0;
+  if (x > 1) return 1;
+  return x;
+}
+
+function confidenceFactor(confidence: Confidence): number {
+  if (confidence === 'High') return 1.0;
+  if (confidence === 'Medium') return 0.7;
+  return 0.4;
+}
+
+function scoreImpact(weaknessSeverity: number, exploitability: number, confidence: Confidence): number {
+  const w = clamp01(weaknessSeverity);
+  const e = clamp01(exploitability);
+  const c = confidenceFactor(confidence);
+  return Math.round(100 * w * e * c);
+}
+
+export function generateHowToWinEngine(matches: Match[], teamRef: string): HowToWinEngineResult {
+  const formula = 'impact = weaknessSeverity × exploitability × confidence';
+
+  if (matches.length === 0) {
+    const breakdown = {
+      weaknessSeverity: 1,
+      exploitability: 0,
+      confidence: 'Low' as const,
+      confidenceFactor: confidenceFactor('Low'),
+      impact: 0,
+    };
+    const fallback: HowToWinCandidate = {
+      id: 'fallback:no-data',
+      rule: 'Fallback',
+      insight: 'Gather more data',
+      evidence: '0 matches found',
+      status: 'Selected',
+      breakdown,
+    };
+    return { selected: [{ insight: fallback.insight, evidence: fallback.evidence }], candidates: [fallback], formula };
+  }
 
   const mapStats = calculateMapStats(matches, teamRef);
   const winRate = calculateWinRate(matches, teamRef);
   const aggression = calculateAggressionProfile(matches, teamRef);
   const window = formatTimeWindow(matches);
-  
-  const candidates: (StrategicInsight & { impact: number })[] = [];
 
-  // Rule 1: Map Pool Weaknesses (High Impact)
-  const mapConfidence = (n: number): Confidence => (n >= 4 ? 'High' : n >= 2 ? 'Medium' : 'Low');
-  const weakMaps = mapStats.filter(m => m.winRate < 0.4 && m.matchesPlayed >= 2);
-  weakMaps.forEach(map => {
+  const candidates: HowToWinCandidate[] = [];
+
+  // Rule 1: Map Pool Weaknesses
+  // Guardrail: map recommendations with <3 games must be explicitly marked low confidence.
+  const mapConfidence = (n: number): Confidence => (n >= 4 ? 'High' : n >= 3 ? 'Medium' : 'Low');
+  const weakMaps = mapStats.filter(m => m.winRate < 0.45 && m.matchesPlayed >= 1);
+  for (const map of weakMaps) {
+    const confidence = mapConfidence(map.matchesPlayed);
+    const impact = scoreImpact(
+      1 - map.winRate,
+      Math.min(1, map.matchesPlayed / 6),
+      confidence
+    );
+
+    const lowSampleNote = map.matchesPlayed < 3 ? ' • Low confidence (n<3) — treat cautiously' : '';
     candidates.push({
+      id: `map-weakness:${map.mapName}`,
+      rule: 'Map weakness',
       insight: `Force the series to ${map.mapName}`,
-      evidence: `Opponent has a ${Math.round(map.winRate * 100)}% win rate on this map over ${map.matchesPlayed} games (${window}) • Confidence: ${mapConfidence(map.matchesPlayed)}`,
-      impact: 90 - (map.winRate * 100) // Lower win rate = higher impact
+      evidence: `Opponent has a ${Math.round(map.winRate * 100)}% win rate on this map over ${map.matchesPlayed} game(s) (${window}) • Confidence: ${confidence}${lowSampleNote}`,
+      status: 'NotSelected',
+      breakdown: {
+        weaknessSeverity: clamp01(1 - map.winRate),
+        exploitability: clamp01(map.matchesPlayed / 6),
+        confidence,
+        confidenceFactor: confidenceFactor(confidence),
+        impact,
+      },
     });
-  });
+  }
 
   if (weakMaps.length === 0 && mapStats.length > 0 && matches.length >= 2) {
     const maxSample = Math.max(...mapStats.map(s => s.matchesPlayed));
-    if (maxSample < 2) {
+    if (maxSample < 3) {
+      const confidence: Confidence = 'Low';
+      const impact = scoreImpact(0.35, 0.4, confidence);
       candidates.push({
+        id: 'guardrail:map-sample',
+        rule: 'Guardrail',
         insight: 'Treat map-pool conclusions cautiously',
-        evidence: `No map has at least 2 games in the current window (${window}), so map-specific weaknesses are low confidence`,
-        impact: 40,
+        evidence: `No map has at least 3 games in the current window (${window}), so map-specific weaknesses are low confidence`,
+        status: 'NotSelected',
+        breakdown: {
+          weaknessSeverity: 0.35,
+          exploitability: 0.4,
+          confidence,
+          confidenceFactor: confidenceFactor(confidence),
+          impact,
+        },
       });
     }
   }
 
-  // Rule 2: Exploit Recent Momentum (Medium-High Impact)
+  // Rule 2: Recent Momentum
+  const overallConf = confidenceFromSampleSize(matches.length);
   if (winRate < 40) {
+    const weaknessSeverity = clamp01((40 - winRate) / 40);
+    const exploitability = 0.8;
+    const impact = scoreImpact(weaknessSeverity, exploitability, overallConf);
     candidates.push({
-      insight: "Aggressive early-game pressure",
-      evidence: `Opponent is on a cold streak with only ${winRate}% total win rate (${window}, n=${matches.length}) • Confidence: ${confidenceFromSampleSize(matches.length)}`,
-      impact: 80 - winRate
+      id: 'momentum:cold',
+      rule: 'Momentum',
+      insight: 'Aggressive early-game pressure',
+      evidence: `Opponent is on a cold streak with only ${winRate}% total win rate (${window}, n=${matches.length}) • Confidence: ${overallConf}`,
+      status: 'NotSelected',
+      breakdown: {
+        weaknessSeverity,
+        exploitability,
+        confidence: overallConf,
+        confidenceFactor: confidenceFactor(overallConf),
+        impact,
+      },
     });
   } else if (winRate > 70) {
+    // Not a weakness, but still a coaching counter.
+    const weaknessSeverity = 0.35;
+    const exploitability = 0.6;
+    const impact = scoreImpact(weaknessSeverity, exploitability, overallConf);
     candidates.push({
-      insight: "Disrupt their rhythm with early timeouts",
-      evidence: `Opponent has high confidence with a ${winRate}% win rate (${window}, n=${matches.length}) • Confidence: ${confidenceFromSampleSize(matches.length)}`,
-      impact: 60 // Lower impact because it's a strength-based counter
+      id: 'momentum:hot',
+      rule: 'Momentum',
+      insight: 'Disrupt their rhythm with early timeouts',
+      evidence: `Opponent has a ${winRate}% win rate (${window}, n=${matches.length}) • Confidence: ${overallConf}`,
+      status: 'NotSelected',
+      breakdown: {
+        weaknessSeverity,
+        exploitability,
+        confidence: overallConf,
+        confidenceFactor: confidenceFactor(overallConf),
+        impact,
+      },
     });
   }
 
-  // Rule 3: Playstyle Counter (Medium Impact)
+  // Rule 3: Playstyle Counter
   if (aggression === 'High') {
+    const weaknessSeverity = 0.6;
+    const exploitability = 0.7;
+    const impact = scoreImpact(weaknessSeverity, exploitability, overallConf);
     candidates.push({
-      insight: "Prioritize defensive utility and spacing",
-      evidence: `Opponent averages ${calculateAverageScore(matches, teamRef)} points per game (${window}), indicating high aggression • Confidence: ${confidenceFromSampleSize(matches.length)}`,
-      impact: 70
+      id: 'playstyle:high-aggression',
+      rule: 'Playstyle',
+      insight: 'Prioritize defensive utility and spacing',
+      evidence: `Opponent averages ${calculateAverageScore(matches, teamRef)} points per game (${window}), indicating high aggression • Confidence: ${overallConf}`,
+      status: 'NotSelected',
+      breakdown: {
+        weaknessSeverity,
+        exploitability,
+        confidence: overallConf,
+        confidenceFactor: confidenceFactor(overallConf),
+        impact,
+      },
     });
   } else if (aggression === 'Low') {
+    const weaknessSeverity = 0.6;
+    const exploitability = 0.7;
+    const impact = scoreImpact(weaknessSeverity, exploitability, overallConf);
     candidates.push({
-      insight: "Initiate fast-paced executes",
-      evidence: `Opponent plays a slow game (avg ${calculateAverageScore(matches, teamRef)} pts) in window (${window}) • Confidence: ${confidenceFromSampleSize(matches.length)}`,
-      impact: 75
+      id: 'playstyle:low-aggression',
+      rule: 'Playstyle',
+      insight: 'Initiate fast-paced executes',
+      evidence: `Opponent plays a slow game (avg ${calculateAverageScore(matches, teamRef)} pts) in window (${window}) • Confidence: ${overallConf}`,
+      status: 'NotSelected',
+      breakdown: {
+        weaknessSeverity,
+        exploitability,
+        confidence: overallConf,
+        confidenceFactor: confidenceFactor(overallConf),
+        impact,
+      },
     });
   }
 
-  // Rule 4: Map Pool Breadth (Medium Impact)
+  // Rule 4: Map Pool Breadth
   if (mapStats.length < 3 && matches.length >= 3) {
+    const weaknessSeverity = 0.55;
+    const exploitability = 0.7;
+    const impact = scoreImpact(weaknessSeverity, exploitability, overallConf);
     candidates.push({
-      insight: "Punish narrow map pool",
-      evidence: `Opponent has only shown comfort on ${mapStats.length} maps in their last ${matches.length} matches (${window})`,
-      impact: 65
+      id: 'map-pool:narrow',
+      rule: 'Map pool',
+      insight: 'Punish narrow map pool',
+      evidence: `Opponent has only shown results on ${mapStats.length} map(s) in their last ${matches.length} matches (${window}) • Confidence: ${overallConf}`,
+      status: 'NotSelected',
+      breakdown: {
+        weaknessSeverity,
+        exploitability,
+        confidence: overallConf,
+        confidenceFactor: confidenceFactor(overallConf),
+        impact,
+      },
     });
   }
 
-  // Rule 5: Scarcity of recent games (Low Impact)
+  // Rule 5: Scarcity of recent games
   if (matches.length < 3) {
+    const confidence: Confidence = 'Low';
+    const weaknessSeverity = 0.4;
+    const exploitability = 0.6;
+    const impact = scoreImpact(weaknessSeverity, exploitability, confidence);
     candidates.push({
-      insight: "Prepare for unknown strategies",
+      id: 'guardrail:scarce-data',
+      rule: 'Guardrail',
+      insight: 'Prepare for unknown strategies',
       evidence: `Only ${matches.length} recent matches available for analysis (${window}) • Confidence: Low`,
-      impact: 30
+      status: 'NotSelected',
+      breakdown: {
+        weaknessSeverity,
+        exploitability,
+        confidence,
+        confidenceFactor: confidenceFactor(confidence),
+        impact,
+      },
     });
   }
 
-  // Sort by impact and return top 3-5
-  return candidates
-    .sort((a, b) => b.impact - a.impact)
-    .slice(0, 5)
-    .map(({ insight, evidence }) => ({ insight, evidence }));
+  if (candidates.length === 0) {
+    const confidence: Confidence = 'Low';
+    const weaknessSeverity = 0.35;
+    const exploitability = 0.5;
+    const impact = scoreImpact(weaknessSeverity, exploitability, confidence);
+    candidates.push({
+      id: 'fallback:default',
+      rule: 'Fallback',
+      insight: 'Default to fundamentals: prep your comfort and anti-strats for their best looks',
+      evidence: `No high-signal weaknesses detected in the current window (${window}) • Confidence: Low`,
+      status: 'NotSelected',
+      breakdown: {
+        weaknessSeverity,
+        exploitability,
+        confidence,
+        confidenceFactor: confidenceFactor(confidence),
+        impact,
+      },
+    });
+  }
+
+  const sorted = [...candidates].sort((a, b) => b.breakdown.impact - a.breakdown.impact);
+  const selected = sorted.slice(0, 5);
+  const selectedIds = new Set(selected.map(c => c.id));
+  const cutoff = selected.length > 0 ? selected[selected.length - 1].breakdown.impact : 0;
+
+  const withStatus: HowToWinCandidate[] = sorted.map(c => {
+    const isSelected = selectedIds.has(c.id);
+    const lowConf = c.breakdown.confidence === 'Low';
+    const status: HowToWinCandidate['status'] = isSelected
+      ? (lowConf ? 'LowConfidenceSelected' : 'Selected')
+      : (lowConf ? 'LowConfidenceNotSelected' : 'NotSelected');
+
+    const whyNotSelected = !isSelected
+      ? `Lower impact score (${c.breakdown.impact}) than selected cutoff (${cutoff})`
+      : undefined;
+
+    return { ...c, status, whyNotSelected };
+  });
+
+  return {
+    selected: selected.map(({ insight, evidence }) => ({ insight, evidence })),
+    candidates: withStatus,
+    formula,
+  };
+}
+
+export function generateHowToWin(matches: Match[], teamRef: string): StrategicInsight[] {
+  return generateHowToWinEngine(matches, teamRef).selected;
 }
 
 /**

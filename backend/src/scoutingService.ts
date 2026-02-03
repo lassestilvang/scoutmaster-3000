@@ -11,6 +11,7 @@ import {
   calculateWinRate, 
   generateScoutingInsights, 
   generateHowToWin,
+  generateHowToWinEngine,
   generateHowToWinMatchup,
   calculateMapStats,
   identifyRecentRoster,
@@ -71,7 +72,8 @@ async function generateReport(
   const winProbability = calculateWinRate(matches, teamRef);
   const evidence = buildReportEvidence(matches, teamRef);
   const insights = generateScoutingInsights(matches, teamRef);
-  const howToWin = generateHowToWin(matches, teamRef);
+  const howToWinEngine = generateHowToWinEngine(matches, teamRef);
+  const howToWin = howToWinEngine.selected;
   const topMaps = calculateMapStats(matches, teamRef);
   const roster = identifyRecentRoster(matches, teamRef);
   const rosterStability = extras?.rosterStability ?? calculateRosterStability(matches, teamRef);
@@ -87,6 +89,7 @@ async function generateReport(
     evidence,
     keyInsights: insights,
     howToWin: howToWin,
+    howToWinEngine: ourTeamName ? undefined : howToWinEngine,
     topMaps,
     mapPlans: extras?.mapPlans,
     roster,
@@ -214,6 +217,8 @@ export async function generateMatchupScoutingReportByName(
     );
 
     report.howToWin = matchupHowToWin.length > 0 ? matchupHowToWin : report.howToWin;
+    // Matchup mode currently overrides the selected tips; hide opponent-only engine details to avoid confusion.
+    report.howToWinEngine = undefined;
     return report;
   } catch (error) {
     console.error('Error generating matchup scouting report from real data, falling back to mock:', (error as any).message);
@@ -261,6 +266,27 @@ function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT', ourTeam
         { insight: 'Force the series to Overpass', evidence: 'Opponent has 30% win rate on this map' },
       ];
 
+  const howToWinEngine: ScoutingReport['howToWinEngine'] = ourTeamName
+    ? undefined
+    : {
+        formula: 'impact = weaknessSeverity × exploitability × confidence',
+        selected: howToWin,
+        candidates: howToWin.map((t, i) => ({
+          id: `mock:${i}`,
+          rule: 'Mock',
+          insight: t.insight,
+          evidence: t.evidence,
+          status: 'Selected',
+          breakdown: {
+            weaknessSeverity: 0.5,
+            exploitability: 0.5,
+            confidence: 'Low',
+            confidenceFactor: 0.4,
+            impact: 50 - i,
+          },
+        })),
+      };
+
   return {
     ourTeamName,
     opponentName: teamName,
@@ -272,6 +298,7 @@ function generateMockReport(teamName: string, game?: 'LOL' | 'VALORANT', ourTeam
       `Map Specialist: Particularly active on Mirage with a 75% success rate.`
     ],
     howToWin,
+    howToWinEngine,
     topMaps: [
       { mapName: 'Mirage', matchesPlayed: 8, winRate: 0.75 },
       { mapName: 'Inferno', matchesPlayed: 5, winRate: 0.60 }
