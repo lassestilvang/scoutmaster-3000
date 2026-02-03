@@ -13,6 +13,9 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  console.log('PDF Handler invoked for:', req.url);
+  console.log('Query:', JSON.stringify(req.query));
+
   if (req.method !== 'GET') {
     res.statusCode = 405;
     res.setHeader('allow', 'GET');
