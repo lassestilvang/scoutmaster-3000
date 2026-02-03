@@ -16,6 +16,26 @@ import { generatePdf } from './utils/pdfGenerator.js';
 const app = express();
 const port = process.env.PORT || 3001;
 
+const HARD_CODED_DEMO_TEAMS: Record<'VALORANT' | 'LOL', Array<{ id: string; name: string }>> = {
+  VALORANT: [
+    // Cloud9 Hackathon: keep Cloud9 first.
+    { id: 'valorant:cloud9', name: 'Cloud9' },
+    { id: 'valorant:sentinels', name: 'Sentinels' },
+    { id: 'valorant:g2-esports', name: 'G2 Esports' },
+    { id: 'valorant:evil-geniuses', name: 'Evil Geniuses' },
+    { id: 'valorant:edward-gaming', name: 'EDward Gaming' },
+    { id: 'valorant:team-heretics', name: 'Team Heretics' },
+  ],
+  LOL: [
+    // Cloud9 Hackathon: keep Cloud9 Kia first.
+    { id: 'lol:cloud9-kia', name: 'Cloud9 Kia' },
+    { id: 'lol:fnatic', name: 'Fnatic' },
+    { id: 'lol:g2-esports', name: 'G2 Esports' },
+    { id: 'lol:t1', name: 'T1' },
+    { id: 'lol:geng-esports', name: 'Gen.G Esports' },
+  ],
+};
+
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173')
   .split(',')
   .map(s => s.trim())
@@ -72,6 +92,24 @@ function toBoundedInt(v: unknown, fallback: number, min: number, max: number): n
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'ScoutMaster 3000 API is running' });
+});
+
+app.get('/api/demo-teams', (req, res) => {
+  const game = (req.query.game as string | undefined) || undefined;
+  const gameEnum = (typeof game === 'string' && game.toLowerCase() === 'lol') ? 'LOL'
+    : (typeof game === 'string' && game.toLowerCase() === 'valorant') ? 'VALORANT'
+    : undefined;
+
+  const teams = gameEnum === 'VALORANT'
+    ? HARD_CODED_DEMO_TEAMS.VALORANT
+    : gameEnum === 'LOL'
+      ? HARD_CODED_DEMO_TEAMS.LOL
+      : [
+        ...HARD_CODED_DEMO_TEAMS.VALORANT,
+        ...HARD_CODED_DEMO_TEAMS.LOL,
+      ];
+
+  res.json({ game: gameEnum || null, teams });
 });
 
 app.get('/api/teams/search', async (req, res) => {

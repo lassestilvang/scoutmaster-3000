@@ -1146,7 +1146,7 @@ function App() {
 
       <footer style={{ marginTop: '50px', textAlign: 'center', fontSize: '0.8rem', color: '#999' }}>
         {health && <span>API Status: {health.status}</span>}
-        <p>© 2026 ScoutMaster 3000 - Built for Cloud9 Hackathon</p>
+        <p>© 2026 ScoutMaster 3000 - Built for <a href="https://cloud9.devpost.com/" target="_blank">Cloud9 × JetBrains Hackathon</a></p>
       </footer>
     </div>
   );
