@@ -75,6 +75,31 @@ function App() {
     return d.toLocaleDateString();
   };
 
+  const resetFormForGameChange = () => {
+    setTeamName('');
+    setOurTeamName('');
+    setTeamNameB('');
+    setCompareMode(false);
+
+    setSuggestions([]);
+    setSuggestionsB([]);
+    setReport(null);
+    setReportB(null);
+    setError(null);
+
+    setLoading(false);
+    setPdfLoading(false);
+
+    // Clear share-link query params so we don't keep cross-game stale inputs in the URL.
+    window.history.replaceState({}, '', window.location.pathname);
+  };
+
+  const handleGameChange = (nextGame: 'LOL' | 'VALORANT') => {
+    if (nextGame === selectedGame) return;
+    resetFormForGameChange();
+    setSelectedGame(nextGame);
+  };
+
   useEffect(() => {
     fetch('/api/health')
       .then((res) => res.json())
@@ -84,6 +109,7 @@ function App() {
 
   useEffect(() => {
     const ac = new AbortController();
+    setDemoTeams([]);
     setDemoTeamsLoading(true);
     fetch(`/api/demo-teams?game=${selectedGame.toLowerCase()}`, { signal: ac.signal })
       .then((res) => res.json())
@@ -97,7 +123,10 @@ function App() {
         console.error('Error fetching demo teams:', err);
         setDemoTeams([]);
       })
-      .finally(() => setDemoTeamsLoading(false));
+      .finally(() => {
+        if (ac.signal.aborted) return;
+        setDemoTeamsLoading(false);
+      });
 
     return () => ac.abort();
   }, [selectedGame]);
@@ -294,7 +323,7 @@ function App() {
                 name="game"
                 value="VALORANT"
                 checked={selectedGame === 'VALORANT'}
-                onChange={() => setSelectedGame('VALORANT')}
+                onChange={() => handleGameChange('VALORANT')}
               />
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="#ff4655" xmlns="http://www.w3.org/2000/svg" aria-hidden>
@@ -311,7 +340,7 @@ function App() {
                 name="game"
                 value="LOL"
                 checked={selectedGame === 'LOL'}
-                onChange={() => setSelectedGame('LOL')}
+                onChange={() => handleGameChange('LOL')}
               />
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden>
