@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ScoutingReport, getMapWikiUrl } from '@scoutmaster-3000/shared';
 
 type TeamSuggestion = { id: string; name: string };
@@ -25,6 +25,8 @@ function App() {
   const [hydratedFromUrl, setHydratedFromUrl] = useState(false);
   const [demoTeams, setDemoTeams] = useState<DemoTeam[]>([]);
   const [demoTeamsLoading, setDemoTeamsLoading] = useState(false);
+  const [shareLinkCopiedTooltip, setShareLinkCopiedTooltip] = useState(false);
+  const shareLinkCopiedTooltipTimeoutRef = useRef<number | null>(null);
 
   const renderMapLink = (game: 'LOL' | 'VALORANT' | undefined, mapName: string) => {
     const url = getMapWikiUrl(game, mapName);
@@ -58,6 +60,7 @@ function App() {
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
+      return true;
     } catch {
       // Fallback for environments without Clipboard API.
       const el = document.createElement('textarea');
@@ -67,10 +70,30 @@ function App() {
       document.body.appendChild(el);
       el.focus();
       el.select();
-      document.execCommand('copy');
+      const ok = document.execCommand('copy');
       document.body.removeChild(el);
+      return ok;
     }
   };
+
+  const showShareLinkCopiedTooltip = () => {
+    setShareLinkCopiedTooltip(true);
+    if (shareLinkCopiedTooltipTimeoutRef.current !== null) {
+      window.clearTimeout(shareLinkCopiedTooltipTimeoutRef.current);
+    }
+    shareLinkCopiedTooltipTimeoutRef.current = window.setTimeout(() => {
+      setShareLinkCopiedTooltip(false);
+      shareLinkCopiedTooltipTimeoutRef.current = null;
+    }, 1600);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (shareLinkCopiedTooltipTimeoutRef.current !== null) {
+        window.clearTimeout(shareLinkCopiedTooltipTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const formatDate = (iso: string | undefined) => {
     if (!iso) return '—';
@@ -109,9 +132,26 @@ function App() {
 
     setLoading(false);
     setPdfLoading(false);
+    setShareLinkCopiedTooltip(false);
 
     // Clear share-link query params so we don't keep cross-game stale inputs in the URL.
     window.history.replaceState({}, '', window.location.pathname);
+  };
+
+  const handleCopyShareLink = async (opts?: { teamOverride?: string; ourOverride?: string }) => {
+    const team = (opts?.teamOverride ?? teamName).trim();
+    if (!team) return;
+
+    const url = buildShareUrl({
+      game: selectedGame,
+      team,
+      ourTeam: compareMode ? undefined : ((opts?.ourOverride ?? ourTeamName).trim() || undefined),
+      compareMode,
+      teamB: compareMode ? (teamNameB.trim() || undefined) : undefined,
+    });
+
+    const ok = await copyToClipboard(url);
+    if (ok) showShareLinkCopiedTooltip();
   };
 
   const handleGameChange = (nextGame: 'LOL' | 'VALORANT') => {
@@ -580,24 +620,6 @@ function App() {
               <span style={{ fontWeight: 800, color: '#333' }}>Compare</span>
               <span style={{ fontSize: '0.82rem', color: '#666' }}>(A vs B)</span>
             </label>
-
-            <button
-              type="button"
-              onClick={async () => {
-                const url = buildShareUrl({
-                  game: selectedGame,
-                  team: teamName,
-                  ourTeam: compareMode ? undefined : (ourTeamName.trim() || undefined),
-                  compareMode,
-                  teamB: compareMode ? (teamNameB.trim() || undefined) : undefined,
-                });
-                await copyToClipboard(url);
-              }}
-              style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #007bff', background: 'white', color: '#007bff', cursor: 'pointer', fontWeight: 800 }}
-              title="Copies a link that re-hydrates the form and auto-runs the report"
-            >
-              Copy share link
-            </button>
           </div>
 
           <form onSubmit={handleScout} style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -921,24 +943,70 @@ function App() {
               <h2 style={{ margin: 0, color: '#333' }}>
                 {report.ourTeamName ? `Matchup: ${report.ourTeamName} vs ${report.opponentName}` : `Team Snapshot: ${report.opponentName}`}
               </h2>
-              <button
-                onClick={() => handleDownloadPdf(report)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '4px',
-                  border: '1px solid #007bff',
-                  backgroundColor: 'white',
-                  color: '#007bff',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  fontWeight: 'bold',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px'
-                }}
-              >
-                📥 Export PDF
-              </button>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyShareLink({ teamOverride: report.opponentName, ourOverride: report.ourTeamName })}
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '4px',
+                      border: '1px solid #007bff',
+                      background: 'white',
+                      color: '#007bff',
+                      cursor: 'pointer',
+                      fontWeight: 800,
+                      fontSize: '0.85rem',
+                    }}
+                    title="Copies a link that re-hydrates the form and auto-runs the report"
+                  >
+                    Copy share link
+                  </button>
+                  {shareLinkCopiedTooltip && (
+                    <div
+                      role="status"
+                      aria-label="Share link copied"
+                      aria-live="polite"
+                      style={{
+                        position: 'absolute',
+                        top: -34,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        background: '#1f2937',
+                        color: 'white',
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        fontSize: '0.82rem',
+                        fontWeight: 800,
+                        boxShadow: '0 8px 20px rgba(0,0,0,0.18)',
+                        whiteSpace: 'nowrap',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      Copied!
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => handleDownloadPdf(report)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '4px',
+                    border: '1px solid #007bff',
+                    backgroundColor: 'white',
+                    color: '#007bff',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                >
+                  📥 Export PDF
+                </button>
+              </div>
             </div>
 
             {isMatchup && (

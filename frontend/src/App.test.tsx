@@ -284,4 +284,97 @@ describe('App', () => {
     resolveScout!(createMockResponse(mockReport));
     await waitForElementToBeRemoved(() => screen.queryByRole('status', { name: 'Generating report' }));
   });
+
+  it('moves Copy share link next to Export PDF and shows a success tooltip after copying', async () => {
+    const user = userEvent.setup();
+
+    const writeText = vi.fn(async (_: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const mockReport = {
+      opponentName: 'SomeTeam',
+      game: 'VALORANT',
+      winProbability: 62,
+      evidence: {
+        startTime: '2026-01-01T00:00:00.000Z',
+        endTime: '2026-02-01T00:00:00.000Z',
+        matchesAnalyzed: 1,
+        mapsPlayed: 1,
+        seriesIds: [],
+        winRateConfidence: 'Low',
+      },
+      dataSources: [
+        {
+          id: 'mock',
+          name: 'Mock data',
+          purpose: 'Test fixture',
+          used: true,
+        },
+      ],
+      keyInsights: ['Plays fast early rounds'],
+      howToWin: [
+        {
+          insight: 'Play slow defaults and punish over-aggression',
+          evidence: 'High aggression profile over a small sample',
+        },
+      ],
+      topMaps: [
+        {
+          mapName: 'Ascent',
+          matchesPlayed: 1,
+          winRate: 1,
+        },
+      ],
+      roster: [
+        {
+          id: 'p1',
+          name: 'Player One',
+          teamId: 't1',
+          role: 'IGL',
+        },
+      ],
+      aggression: 'High',
+      avgScore: 13,
+      matchesAnalyzed: 1,
+    };
+
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url.startsWith('/api/health')) return createMockResponse({ status: 'ok', message: 'ok' });
+      if (url.startsWith('/api/demo-teams')) return createMockResponse({ teams: [] });
+      if (url.startsWith('/api/teams/search')) return createMockResponse([]);
+      if (url.startsWith('/api/scout')) return createMockResponse(mockReport);
+
+      throw new Error(`Unhandled fetch URL in test: ${url}`);
+    });
+
+    render(<App />);
+
+    // Copy share link should no longer be in the top control bar.
+    expect(screen.queryByRole('button', { name: /copy share link/i })).toBeNull();
+
+    await user.type(screen.getByLabelText('Opponent team name'), 'SomeTeam');
+    await user.click(screen.getByRole('button', { name: 'Generate Report' }));
+
+    const exportPdf = await screen.findByRole('button', { name: /export pdf/i });
+    const copyShare = screen.getByRole('button', { name: /copy share link/i });
+    expect(exportPdf.parentElement).toContainElement(copyShare);
+
+    await user.click(copyShare);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledTimes(1);
+    });
+    expect(writeText.mock.calls[0][0]).toContain('game=valorant');
+    expect(writeText.mock.calls[0][0]).toContain('team=SomeTeam');
+
+    expect(screen.getByRole('status', { name: 'Share link copied' })).toBeInTheDocument();
+
+    await new Promise((r) => setTimeout(r, 1750));
+    expect(screen.queryByRole('status', { name: 'Share link copied' })).toBeNull();
+  });
 });
