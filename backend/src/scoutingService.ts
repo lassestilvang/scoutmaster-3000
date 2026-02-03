@@ -7,7 +7,13 @@ import {
   normalizePlayerDraftPicks,
   normalizeSeriesState,
 } from './data/normalizer.js';
-import { ScoutingReport, Match } from '@scoutmaster-3000/shared';
+import type {
+  Match,
+  MatchupHowToWinTransparency,
+  MatchupMapPoolDelta,
+  MatchupTeamSnapshot,
+  ScoutingReport,
+} from '@scoutmaster-3000/shared';
 import {
   calculateWinRate, 
   generateScoutingInsights, 
@@ -214,7 +220,7 @@ async function generateReport(
     rawInputs,
     keyInsights: insights,
     howToWin: howToWin,
-    howToWinEngine: ourTeamName ? undefined : howToWinEngine,
+    howToWinEngine,
     topMaps,
     mapPlans: extras?.mapPlans,
     roster,
@@ -227,6 +233,139 @@ async function generateReport(
     compositions: extras?.compositions,
     isMockData: false,
   };
+}
+
+function buildTeamSnapshot(
+  matches: Match[],
+  teamRef: string,
+  teamName: string
+): MatchupTeamSnapshot {
+  return {
+    teamName,
+    winRate: calculateWinRate(matches, teamRef),
+    avgScore: calculateAverageScore(matches, teamRef),
+    matchesAnalyzed: matches.length,
+    evidence: buildReportEvidence(matches, teamRef),
+    topMaps: calculateMapStats(matches, teamRef),
+    aggression: calculateAggressionProfile(matches, teamRef),
+    roster: identifyRecentRoster(matches, teamRef),
+    rosterStability: calculateRosterStability(matches, teamRef),
+  };
+}
+
+function buildMapPoolDeltas(our: MatchupTeamSnapshot, opponent: MatchupTeamSnapshot): MatchupMapPoolDelta[] {
+  const ourByMap: Record<string, MatchupTeamSnapshot['topMaps'][number]> = {};
+  for (const s of our.topMaps) ourByMap[s.mapName] = s;
+
+  const oppByMap: Record<string, MatchupTeamSnapshot['topMaps'][number]> = {};
+  for (const s of opponent.topMaps) oppByMap[s.mapName] = s;
+
+  const shared = Object.keys(ourByMap).filter(m => !!oppByMap[m]);
+
+  return shared
+    .map(mapName => {
+      const us = ourByMap[mapName];
+      const them = oppByMap[mapName];
+      return {
+        mapName,
+        our: us,
+        opponent: them,
+        deltaWinRate: us.winRate - them.winRate,
+        minSample: Math.min(us.matchesPlayed, them.matchesPlayed),
+      };
+    })
+    .sort((a, b) => (Math.abs(b.deltaWinRate) - Math.abs(a.deltaWinRate)) || (b.minSample - a.minSample))
+    .slice(0, 8);
+}
+
+function buildMatchupHowToWinTransparency(
+  ourMatches: Match[],
+  opponentMatches: Match[],
+  our: MatchupTeamSnapshot,
+  opponent: MatchupTeamSnapshot
+): MatchupHowToWinTransparency {
+  const ourByMap = new Set(our.topMaps.map(s => s.mapName));
+  const oppByMap = new Set(opponent.topMaps.map(s => s.mapName));
+  const sharedMaps = [...ourByMap].filter(m => oppByMap.has(m)).length;
+
+  return {
+    kind: 'MatchupHeuristics',
+    basedOn: {
+      ourMatchesAnalyzed: ourMatches.length,
+      opponentMatchesAnalyzed: opponentMatches.length,
+      sharedMaps,
+    },
+    notes: [
+      'Matchup tips are heuristic and derived from the current normalized feed (map win rates + sample sizes, coarse aggression profile, and map pool breadth).',
+      'This is not a predictive win-probability model; treat recommendations as “what to prepare” rather than a guarantee.',
+    ],
+  };
+}
+
+/**
+ * Public helper to build a matchup report from already-normalized matches.
+ *
+ * The top-level report remains opponent-centric for backwards compatibility, while `report.matchup`
+ * provides a true two-sided snapshot + deltas.
+ */
+export async function generateMatchupReportFromMatches(
+  ourMatches: Match[],
+  ourTeamRef: string,
+  ourTeamName: string,
+  opponentMatches: Match[],
+  opponentTeamRef: string,
+  opponentTeamName: string,
+  opponentExtras?: Pick<ScoutingReport, 'draftStats' | 'compositions' | 'mapPlans' | 'rosterStability' | 'playerTendencies'>,
+  game?: 'LOL' | 'VALORANT'
+): Promise<ScoutingReport> {
+  const report = await generateReport(opponentMatches, opponentTeamRef, opponentTeamName, opponentExtras, ourTeamName, game);
+
+  // Keep the opponent-only engine payload, but don’t attach it to `howToWinEngine` in matchup mode,
+  // because `howToWin` tips will be overridden by matchup heuristics.
+  const opponentHowToWinEngine = report.howToWinEngine;
+
+  const matchupTips = generateHowToWinMatchup(ourMatches, ourTeamRef, opponentMatches, opponentTeamRef);
+  if (matchupTips.length > 0) {
+    report.howToWin = matchupTips;
+  }
+  report.howToWinEngine = undefined;
+
+  const ourSnapshot = buildTeamSnapshot(ourMatches, ourTeamRef, ourTeamName);
+  const opponentSnapshot: MatchupTeamSnapshot = {
+    teamName: report.opponentName,
+    winRate: report.winProbability,
+    avgScore: report.avgScore,
+    matchesAnalyzed: report.matchesAnalyzed,
+    evidence: report.evidence,
+    topMaps: report.topMaps,
+    aggression: report.aggression,
+    roster: report.roster,
+    rosterStability: report.rosterStability,
+  };
+
+  report.matchup = {
+    our: ourSnapshot,
+    opponent: opponentSnapshot,
+    deltas: {
+      mapPool: buildMapPoolDeltas(ourSnapshot, opponentSnapshot),
+      aggression: {
+        our: ourSnapshot.aggression,
+        opponent: opponentSnapshot.aggression,
+        note:
+          ourSnapshot.aggression === opponentSnapshot.aggression
+            ? 'Teams have similar tempo based on the avg-score aggression proxy.'
+            : `Aggression mismatch: ${ourSnapshot.teamName} is ${ourSnapshot.aggression.toLowerCase()} tempo vs ${opponentSnapshot.teamName} at ${opponentSnapshot.aggression.toLowerCase()} tempo.`,
+      },
+      rosterStability: {
+        our: ourSnapshot.rosterStability,
+        opponent: opponentSnapshot.rosterStability,
+      },
+    },
+    howToWinTransparency: buildMatchupHowToWinTransparency(ourMatches, opponentMatches, ourSnapshot, opponentSnapshot),
+    opponentHowToWinEngine,
+  };
+
+  return report;
 }
 
 /**
@@ -375,22 +514,16 @@ export async function generateMatchupScoutingReportByName(
     const playerTendencies = calculatePlayerTendencies(opponentMatches, opponentId, playerDraftPicks);
     const rosterStability = calculateRosterStability(opponentMatches, opponentId);
 
-    // Override “How to Win” with matchup-aware recommendations.
-    const matchupHowToWin = generateHowToWinMatchup(ourMatches, ourId, opponentMatches, opponentId);
-
-    const report = await generateReport(
+    return generateMatchupReportFromMatches(
+      ourMatches,
+      ourId,
+      ourActualName,
       opponentMatches,
       opponentId,
       opponentActualName,
       { draftStats, compositions, mapPlans, playerTendencies, rosterStability },
-      ourActualName,
       game
     );
-
-    report.howToWin = matchupHowToWin.length > 0 ? matchupHowToWin : report.howToWin;
-    // Matchup mode currently overrides the selected tips; hide opponent-only engine details to avoid confusion.
-    report.howToWinEngine = undefined;
-    return report;
   } catch (error) {
     if (error instanceof TeamNotFoundError) {
       throw error;
@@ -451,46 +584,118 @@ function generateMockReport(
   });
   const rawInputs = buildReportRawInputs(mockMatches, mockTeamId, 20);
 
-  const howToWin = ourTeamName
-    ? [
-        {
-          insight: 'Prioritize your comfort maps and force their weakest looks',
-          evidence: 'Mock mode: matchup recommendations are illustrative when real series data is unavailable',
-        },
-        {
-          insight: 'Match their tempo: prepare anti-rush and anti-default round plans',
-          evidence: 'Mock mode: use this as a checklist until real aggression data can be fetched',
-        },
-        {
-          insight: 'Draft denial: ban their most-picked comfort and target their off-maps',
-          evidence: 'Mock mode: draft stats shown are example values (not live GRID data)',
-        },
-      ]
-    : [
-        { insight: 'Prioritize defensive utility', evidence: 'Opponent averages 14 points per game' },
-        { insight: 'Force the series to Overpass', evidence: 'Opponent has 30% win rate on this map' },
-      ];
+  const opponentOnlyHowToWin: ScoutingReport['howToWin'] = [
+    { insight: 'Prioritize defensive utility', evidence: 'Opponent averages 14 points per game' },
+    { insight: 'Force the series to Overpass', evidence: 'Opponent has 30% win rate on this map' },
+  ];
 
-  const howToWinEngine: ScoutingReport['howToWinEngine'] = ourTeamName
-    ? undefined
-    : {
-        formula: 'impact = weaknessSeverity × exploitability × confidence',
-        selected: howToWin,
-        candidates: howToWin.map((t, i) => ({
-          id: `mock:${i}`,
-          rule: 'Mock',
-          insight: t.insight,
-          evidence: t.evidence,
-          status: 'Selected',
-          breakdown: {
-            weaknessSeverity: 0.5,
-            exploitability: 0.5,
-            confidence: 'Low',
-            confidenceFactor: 0.4,
-            impact: 50 - i,
+  const matchupHowToWin: ScoutingReport['howToWin'] = [
+    {
+      insight: 'Prioritize your comfort maps and force their weakest looks',
+      evidence: 'Mock mode: matchup recommendations are illustrative when real series data is unavailable',
+    },
+    {
+      insight: 'Match their tempo: prepare anti-rush and anti-default round plans',
+      evidence: 'Mock mode: use this as a checklist until real aggression data can be fetched',
+    },
+    {
+      insight: 'Draft denial: ban their most-picked comfort and target their off-maps',
+      evidence: 'Mock mode: draft stats shown are example values (not live GRID data)',
+    },
+  ];
+
+  const howToWin = ourTeamName ? matchupHowToWin : opponentOnlyHowToWin;
+
+  const opponentHowToWinEngine = {
+    formula: 'impact = weaknessSeverity × exploitability × confidence',
+    selected: opponentOnlyHowToWin,
+    candidates: opponentOnlyHowToWin.map((t, i) => ({
+      id: `mock:${i}`,
+      rule: 'Mock',
+      insight: t.insight,
+      evidence: t.evidence,
+      status: 'Selected',
+      breakdown: {
+        weaknessSeverity: 0.5,
+        exploitability: 0.5,
+        confidence: 'Low',
+        confidenceFactor: 0.4,
+        impact: 50 - i,
+      },
+    })),
+  } satisfies NonNullable<ScoutingReport['howToWinEngine']>;
+
+  const howToWinEngine: ScoutingReport['howToWinEngine'] = ourTeamName ? undefined : opponentHowToWinEngine;
+
+  const topMaps: ScoutingReport['topMaps'] = [
+    { mapName: 'Mirage', matchesPlayed: 8, winRate: 0.75 },
+    { mapName: 'Inferno', matchesPlayed: 5, winRate: 0.60 }
+  ];
+
+  const rosterStability: NonNullable<ScoutingReport['rosterStability']> = {
+    confidence: 'High',
+    matchesConsidered: 8,
+    corePlayers: roster,
+    uniquePlayersSeen: 2,
+  };
+
+  const matchup: ScoutingReport['matchup'] = ourTeamName
+    ? (() => {
+        const opponentSnapshot: MatchupTeamSnapshot = {
+          teamName,
+          winRate: 65,
+          avgScore: 14,
+          matchesAnalyzed: 10,
+          evidence,
+          topMaps,
+          aggression: 'High',
+          roster,
+          rosterStability,
+        };
+
+        const ourRoster = roster.map(p => ({ ...p, teamId: 'mock-our' }));
+        const ourSnapshot: MatchupTeamSnapshot = {
+          teamName: ourTeamName,
+          winRate: 55,
+          avgScore: 13,
+          matchesAnalyzed: 10,
+          evidence,
+          topMaps: [
+            { mapName: 'Mirage', matchesPlayed: 6, winRate: 0.55 },
+            { mapName: 'Inferno', matchesPlayed: 4, winRate: 0.45 },
+          ],
+          aggression: 'Medium',
+          roster: ourRoster,
+          rosterStability: { ...rosterStability, confidence: 'Medium' },
+        };
+
+        return {
+          our: ourSnapshot,
+          opponent: opponentSnapshot,
+          deltas: {
+            mapPool: buildMapPoolDeltas(ourSnapshot, opponentSnapshot),
+            aggression: {
+              our: ourSnapshot.aggression,
+              opponent: opponentSnapshot.aggression,
+              note: 'Mock mode: aggression is illustrative.',
+            },
+            rosterStability: {
+              our: ourSnapshot.rosterStability,
+              opponent: opponentSnapshot.rosterStability,
+              note: 'Mock mode: roster stability is illustrative.',
+            },
           },
-        })),
-      };
+          howToWinTransparency: {
+            kind: 'MatchupHeuristics',
+            basedOn: { ourMatchesAnalyzed: 10, opponentMatchesAnalyzed: 10, sharedMaps: 2 },
+            notes: [
+              'Mock mode: matchup transparency is illustrative; real reports include data-driven sample sizes and shared-map detection.',
+            ],
+          } as MatchupHowToWinTransparency,
+          opponentHowToWinEngine,
+        };
+      })()
+    : undefined;
 
   return {
     ourTeamName,
@@ -506,10 +711,8 @@ function generateMockReport(
     ],
     howToWin,
     howToWinEngine,
-    topMaps: [
-      { mapName: 'Mirage', matchesPlayed: 8, winRate: 0.75 },
-      { mapName: 'Inferno', matchesPlayed: 5, winRate: 0.60 }
-    ],
+    matchup,
+    topMaps,
     mapPlans: game === 'VALORANT' ? [
       {
         mapName: 'Ascent',
@@ -523,12 +726,7 @@ function generateMockReport(
       },
     ] : undefined,
     roster,
-    rosterStability: {
-      confidence: 'High',
-      matchesConsidered: 8,
-      corePlayers: roster,
-      uniquePlayersSeen: 2,
-    },
+    rosterStability,
     playerTendencies: [
       {
         playerId: 'p1',

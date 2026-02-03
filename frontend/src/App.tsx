@@ -342,9 +342,8 @@ function App() {
             boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
           }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: 700 }}>Guided demo</span>
               <select
-                aria-label="Guided demo team"
+                aria-label="Demo team"
                 key={selectedGame}
                 defaultValue=""
                 disabled={demoTeamsLoading || demoTeams.length === 0}
@@ -651,7 +650,14 @@ function App() {
             ))}
           </div>
         </div>
-      ) : report ? (
+      ) : report ? (() => {
+        const isMatchup = Boolean(report.matchup && report.ourTeamName);
+        const our = report.matchup?.our;
+        const opponent = report.matchup?.opponent;
+        const ourEvidence = our?.evidence;
+        const opponentEvidence = report.evidence;
+
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {report.isMockData && (
             <div style={{ 
@@ -698,66 +704,253 @@ function App() {
                 📥 Export PDF
               </button>
             </div>
+
+            {isMatchup && (
+              <div style={{ marginTop: '10px', color: '#666', fontSize: '0.9rem' }}>
+                Matchup mode: this report includes <strong>both teams’ snapshots</strong> and a small set of <strong>computed deltas</strong>. Sections that use opponent-only data are labeled.
+              </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '20px', marginTop: '20px' }}>
-              <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
-                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
-                  {report.ourTeamName ? 'Opponent Win Rate' : 'Win Probability'}
-                </div>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: report.winProbability > 50 ? '#28a745' : '#dc3545' }}>{report.winProbability}%</div>
-              </div>
-              <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
-                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
-                  {report.ourTeamName ? 'Opponent Avg. Score' : 'Avg. Score'}
-                </div>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{report.avgScore}</div>
-              </div>
-              <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
-                <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Matches</div>
-                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{report.matchesAnalyzed}</div>
-              </div>
+              {isMatchup ? (
+                <>
+                  <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
+                      Our Win Rate
+                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: (our?.winRate || 0) > 50 ? '#28a745' : '#dc3545' }}>{our?.winRate ?? '—'}%</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
+                      Opponent Win Rate
+                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: (opponent?.winRate || 0) > 50 ? '#28a745' : '#dc3545' }}>{opponent?.winRate ?? '—'}%</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
+                      Our Avg. Score
+                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{our?.avgScore ?? '—'}</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
+                      Opponent Avg. Score
+                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{opponent?.avgScore ?? '—'}</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Our Matches</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{our?.matchesAnalyzed ?? '—'}</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Opponent Matches</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{opponent?.matchesAnalyzed ?? '—'}</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
+                      Win Probability
+                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: report.winProbability > 50 ? '#28a745' : '#dc3545' }}>{report.winProbability}%</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>
+                      Avg. Score
+                    </div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{report.avgScore}</div>
+                  </div>
+                  <div style={{ textAlign: 'center', padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '6px' }}>
+                    <div style={{ fontSize: '0.85rem', color: '#666', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '5px' }}>Matches</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#333' }}>{report.matchesAnalyzed}</div>
+                  </div>
+                </>
+              )}
             </div>
           </section>
 
+          {isMatchup && report.matchup && (
+            <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+              <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🔎 Matchup Differences</h3>
+              <div style={{ marginTop: '8px', color: '#666', fontSize: '0.9rem' }}>
+                These deltas are computed from recent map results and coarse tempo proxies.
+              </div>
+
+              <h4 style={{ margin: '18px 0 10px 0', color: '#333' }}>Map pool deltas (shared maps)</h4>
+              {report.matchup.deltas.mapPool && report.matchup.deltas.mapPool.length > 0 ? (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Map</th>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Our WR</th>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Opp WR</th>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Δ (pp)</th>
+                        <th style={{ padding: '10px 8px', color: '#666' }}>Min sample</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.matchup.deltas.mapPool.slice(0, 8).map((d) => (
+                        <tr key={d.mapName} style={{ borderBottom: '1px solid #f1f1f1' }}>
+                          <td style={{ padding: '10px 8px', fontWeight: 800 }}>{renderMapLink((report.game || selectedGame) as any, d.mapName)}</td>
+                          <td style={{ padding: '10px 8px' }}>{Math.round(d.our.winRate * 100)}% ({d.our.matchesPlayed})</td>
+                          <td style={{ padding: '10px 8px' }}>{Math.round(d.opponent.winRate * 100)}% ({d.opponent.matchesPlayed})</td>
+                          <td style={{ padding: '10px 8px', fontWeight: 900, color: d.deltaWinRate >= 0 ? '#28a745' : '#dc3545' }}>
+                            {d.deltaWinRate >= 0 ? '+' : ''}{Math.round(d.deltaWinRate * 100)}pp
+                          </td>
+                          <td style={{ padding: '10px 8px' }}>{d.minSample}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ marginTop: '10px', color: '#666', fontStyle: 'italic' }}>No shared-map deltas available in the current window.</div>
+              )}
+
+              <h4 style={{ margin: '18px 0 10px 0', color: '#333' }}>Tempo (aggression proxy)</h4>
+              <div style={{ color: '#666' }}>{report.matchup.deltas.aggression.note || '—'}</div>
+
+              {(report.matchup.deltas.rosterStability?.note || our?.rosterStability || opponent?.rosterStability) && (
+                <>
+                  <h4 style={{ margin: '18px 0 10px 0', color: '#333' }}>Roster stability</h4>
+                  {report.matchup.deltas.rosterStability?.note && (
+                    <div style={{ color: '#666', marginBottom: '8px' }}>{report.matchup.deltas.rosterStability.note}</div>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                    <div style={{ background: '#f8f9fa', borderRadius: '8px', padding: '12px' }}>
+                      <div style={{ fontWeight: 900, color: '#333' }}>Our stability</div>
+                      <div style={{ marginTop: '6px', color: '#666' }}>{our?.rosterStability ? `${our.rosterStability.confidence} (based on ${our.rosterStability.matchesConsidered})` : '—'}</div>
+                    </div>
+                    <div style={{ background: '#f8f9fa', borderRadius: '8px', padding: '12px' }}>
+                      <div style={{ fontWeight: 900, color: '#333' }}>Opponent stability</div>
+                      <div style={{ marginTop: '6px', color: '#666' }}>{opponent?.rosterStability ? `${opponent.rosterStability.confidence} (based on ${opponent.rosterStability.matchesConsidered})` : '—'}</div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+
           {/* 1.5 Evidence & Sources */}
-          {report.evidence && (
+          {opponentEvidence && (
             <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
               <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🧾 Evidence & Sources</h3>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px', marginTop: '10px' }}>
-                <div style={{ fontSize: '0.95rem', color: '#333' }}>
-                  <strong>Time window:</strong>{' '}
-                  <span style={{ color: '#666' }}>{formatDate(report.evidence.startTime)} → {formatDate(report.evidence.endTime)}</span>
-                </div>
-                <div style={{ fontSize: '0.95rem', color: '#333' }}>
-                  <strong>Sample:</strong>{' '}
-                  <span style={{ color: '#666' }}>
-                    {report.evidence.matchesAnalyzed} matches • {report.evidence.mapsPlayed} maps • {report.evidence.seriesIds.length} series
-                  </span>
-                </div>
-                <div style={{ fontSize: '0.95rem', color: '#333' }}>
-                  <strong>Win-rate confidence:</strong>{' '}
-                  <span style={{ color: '#666' }}>{report.evidence.winRateConfidence}</span>
-                </div>
-              </div>
+              {isMatchup && ourEvidence ? (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px', marginTop: '10px' }}>
+                    <div style={{ background: '#f8f9fa', borderRadius: '10px', padding: '12px', border: '1px solid #eee' }}>
+                      <div style={{ fontWeight: 900, color: '#333' }}>Our evidence window</div>
+                      <div style={{ marginTop: '8px', fontSize: '0.95rem', color: '#333' }}>
+                        <strong>Time window:</strong>{' '}
+                        <span style={{ color: '#666' }}>{formatDate(ourEvidence.startTime)} → {formatDate(ourEvidence.endTime)}</span>
+                      </div>
+                      <div style={{ marginTop: '6px', fontSize: '0.95rem', color: '#333' }}>
+                        <strong>Sample:</strong>{' '}
+                        <span style={{ color: '#666' }}>
+                          {ourEvidence.matchesAnalyzed} matches • {ourEvidence.mapsPlayed} maps • {ourEvidence.seriesIds.length} series
+                        </span>
+                      </div>
+                      <div style={{ marginTop: '6px', fontSize: '0.95rem', color: '#333' }}>
+                        <strong>Win-rate confidence:</strong>{' '}
+                        <span style={{ color: '#666' }}>{ourEvidence.winRateConfidence}</span>
+                      </div>
+                      {ourEvidence.winRateTrend && (
+                        <div style={{ marginTop: '8px', fontSize: '0.9rem', color: '#333' }}>
+                          <strong>Trend:</strong>{' '}
+                          <span style={{ color: '#666' }}>
+                            {ourEvidence.winRateTrend.direction === 'Up' ? '↑' : ourEvidence.winRateTrend.direction === 'Down' ? '↓' : '→'}
+                            {' '}{ourEvidence.winRateTrend.direction}
+                            {' '}({ourEvidence.winRateTrend.deltaPctPoints >= 0 ? '+' : ''}{ourEvidence.winRateTrend.deltaPctPoints}pp)
+                            {' '}— last {ourEvidence.winRateTrend.recentMatches} vs previous {ourEvidence.winRateTrend.previousMatches}
+                          </span>
+                        </div>
+                      )}
+                      <details style={{ marginTop: '10px' }}>
+                        <summary style={{ cursor: 'pointer', color: '#007bff', fontWeight: 700 }}>Our series IDs used</summary>
+                        <div style={{ marginTop: '8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '0.85rem', color: '#333', background: 'white', border: '1px solid #eee', borderRadius: '8px', padding: '10px', overflowX: 'auto' }}>
+                          {ourEvidence.seriesIds.length > 0 ? ourEvidence.seriesIds.join(', ') : '—'}
+                        </div>
+                      </details>
+                    </div>
 
-              {report.evidence.winRateTrend && (
-                <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#333' }}>
-                  <strong>Trend:</strong>{' '}
-                  <span style={{ color: '#666' }}>
-                    {report.evidence.winRateTrend.direction === 'Up' ? '↑' : report.evidence.winRateTrend.direction === 'Down' ? '↓' : '→'}
-                    {' '}{report.evidence.winRateTrend.direction}
-                    {' '}({report.evidence.winRateTrend.deltaPctPoints >= 0 ? '+' : ''}{report.evidence.winRateTrend.deltaPctPoints}pp)
-                    {' '}— last {report.evidence.winRateTrend.recentMatches} vs previous {report.evidence.winRateTrend.previousMatches}
-                  </span>
-                </div>
+                    <div style={{ background: '#f8f9fa', borderRadius: '10px', padding: '12px', border: '1px solid #eee' }}>
+                      <div style={{ fontWeight: 900, color: '#333' }}>Opponent evidence window</div>
+                      <div style={{ marginTop: '8px', fontSize: '0.95rem', color: '#333' }}>
+                        <strong>Time window:</strong>{' '}
+                        <span style={{ color: '#666' }}>{formatDate(opponentEvidence.startTime)} → {formatDate(opponentEvidence.endTime)}</span>
+                      </div>
+                      <div style={{ marginTop: '6px', fontSize: '0.95rem', color: '#333' }}>
+                        <strong>Sample:</strong>{' '}
+                        <span style={{ color: '#666' }}>
+                          {opponentEvidence.matchesAnalyzed} matches • {opponentEvidence.mapsPlayed} maps • {opponentEvidence.seriesIds.length} series
+                        </span>
+                      </div>
+                      <div style={{ marginTop: '6px', fontSize: '0.95rem', color: '#333' }}>
+                        <strong>Win-rate confidence:</strong>{' '}
+                        <span style={{ color: '#666' }}>{opponentEvidence.winRateConfidence}</span>
+                      </div>
+                      {opponentEvidence.winRateTrend && (
+                        <div style={{ marginTop: '8px', fontSize: '0.9rem', color: '#333' }}>
+                          <strong>Trend:</strong>{' '}
+                          <span style={{ color: '#666' }}>
+                            {opponentEvidence.winRateTrend.direction === 'Up' ? '↑' : opponentEvidence.winRateTrend.direction === 'Down' ? '↓' : '→'}
+                            {' '}{opponentEvidence.winRateTrend.direction}
+                            {' '}({opponentEvidence.winRateTrend.deltaPctPoints >= 0 ? '+' : ''}{opponentEvidence.winRateTrend.deltaPctPoints}pp)
+                            {' '}— last {opponentEvidence.winRateTrend.recentMatches} vs previous {opponentEvidence.winRateTrend.previousMatches}
+                          </span>
+                        </div>
+                      )}
+                      <details style={{ marginTop: '10px' }}>
+                        <summary style={{ cursor: 'pointer', color: '#007bff', fontWeight: 700 }}>Opponent series IDs used</summary>
+                        <div style={{ marginTop: '8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '0.85rem', color: '#333', background: 'white', border: '1px solid #eee', borderRadius: '8px', padding: '10px', overflowX: 'auto' }}>
+                          {opponentEvidence.seriesIds.length > 0 ? opponentEvidence.seriesIds.join(', ') : '—'}
+                        </div>
+                      </details>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px', marginTop: '10px' }}>
+                    <div style={{ fontSize: '0.95rem', color: '#333' }}>
+                      <strong>Time window:</strong>{' '}
+                      <span style={{ color: '#666' }}>{formatDate(opponentEvidence.startTime)} → {formatDate(opponentEvidence.endTime)}</span>
+                    </div>
+                    <div style={{ fontSize: '0.95rem', color: '#333' }}>
+                      <strong>Sample:</strong>{' '}
+                      <span style={{ color: '#666' }}>
+                        {opponentEvidence.matchesAnalyzed} matches • {opponentEvidence.mapsPlayed} maps • {opponentEvidence.seriesIds.length} series
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.95rem', color: '#333' }}>
+                      <strong>Win-rate confidence:</strong>{' '}
+                      <span style={{ color: '#666' }}>{opponentEvidence.winRateConfidence}</span>
+                    </div>
+                  </div>
+
+                  {opponentEvidence.winRateTrend && (
+                    <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#333' }}>
+                      <strong>Trend:</strong>{' '}
+                      <span style={{ color: '#666' }}>
+                        {opponentEvidence.winRateTrend.direction === 'Up' ? '↑' : opponentEvidence.winRateTrend.direction === 'Down' ? '↓' : '→'}
+                        {' '}{opponentEvidence.winRateTrend.direction}
+                        {' '}({opponentEvidence.winRateTrend.deltaPctPoints >= 0 ? '+' : ''}{opponentEvidence.winRateTrend.deltaPctPoints}pp)
+                        {' '}— last {opponentEvidence.winRateTrend.recentMatches} vs previous {opponentEvidence.winRateTrend.previousMatches}
+                      </span>
+                    </div>
+                  )}
+
+                  <details style={{ marginTop: '12px' }}>
+                    <summary style={{ cursor: 'pointer', color: '#007bff', fontWeight: 700 }}>Series IDs used</summary>
+                    <div style={{ marginTop: '8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '0.85rem', color: '#333', background: '#f8f9fa', border: '1px solid #eee', borderRadius: '8px', padding: '10px', overflowX: 'auto' }}>
+                      {opponentEvidence.seriesIds.length > 0 ? opponentEvidence.seriesIds.join(', ') : '—'}
+                    </div>
+                  </details>
+                </>
               )}
-
-              <details style={{ marginTop: '12px' }}>
-                <summary style={{ cursor: 'pointer', color: '#007bff', fontWeight: 700 }}>Series IDs used</summary>
-                <div style={{ marginTop: '8px', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '0.85rem', color: '#333', background: '#f8f9fa', border: '1px solid #eee', borderRadius: '8px', padding: '10px', overflowX: 'auto' }}>
-                  {report.evidence.seriesIds.length > 0 ? report.evidence.seriesIds.join(', ') : '—'}
-                </div>
-              </details>
 
               {report.dataSources && report.dataSources.length > 0 && (
                 <div style={{ marginTop: '12px' }}>
@@ -780,6 +973,12 @@ function App() {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {isMatchup && (
+                <div style={{ marginTop: '12px', fontSize: '0.85rem', color: '#666', fontStyle: 'italic' }}>
+                  Note: raw inputs shown below are opponent-scoped.
                 </div>
               )}
 
@@ -828,8 +1027,71 @@ function App() {
           )}
 
           {/* 2. Key Tendencies */}
+          {isMatchup && our && (
+            <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+              <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>📊 Our Tendencies</h3>
+              <div style={{ margin: '15px 0' }}>
+                <strong>Playstyle Aggression:</strong>
+                <span
+                  title="Aggression is a coarse proxy derived from average score per match (higher scoring tends to correlate with higher pace/volatility)."
+                  style={{ marginLeft: '6px', color: '#666', cursor: 'help', fontWeight: 700 }}
+                >ⓘ</span>
+                <span style={{
+                  marginLeft: '10px',
+                  padding: '4px 12px',
+                  borderRadius: '20px',
+                  fontSize: '0.9rem',
+                  fontWeight: 'bold',
+                  backgroundColor: our.aggression === 'High' ? '#f8d7da' : our.aggression === 'Medium' ? '#fff3cd' : '#d4edda',
+                  color: our.aggression === 'High' ? '#721c24' : our.aggression === 'Medium' ? '#856404' : '#155724'
+                }}>{our.aggression}</span>
+              </div>
+
+              {our.rosterStability && (
+                <div style={{ marginTop: '10px', fontSize: '0.95rem', color: '#333' }}>
+                  <strong>Roster stability:</strong>{' '}
+                  <span style={{ color: '#666' }}>{our.rosterStability.confidence} (based on {our.rosterStability.matchesConsidered} match(es) with roster data)</span>
+                </div>
+              )}
+
+              {our.roster && our.roster.length > 0 && (
+                <div style={{ marginTop: '12px' }}>
+                  <div style={{ fontWeight: 900, color: '#333' }}>Recent roster</div>
+                  <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {our.roster.slice(0, 10).map((p) => (
+                      <span key={p.id} style={{ background: '#f8f9fa', border: '1px solid #eee', borderRadius: '999px', padding: '6px 10px', fontSize: '0.85rem', color: '#333', fontWeight: 700 }}>
+                        {p.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '20px' }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
+                    <th style={{ padding: '12px 8px', color: '#666' }}>Map Name</th>
+                    <th style={{ padding: '12px 8px', color: '#666' }}>Played</th>
+                    <th style={{ padding: '12px 8px', color: '#666' }}>Win Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {our.topMaps.map((m) => (
+                    <tr key={m.mapName} style={{ borderBottom: '1px solid #f1f1f1' }}>
+                      <td style={{ padding: '12px 8px', fontWeight: 'bold' }}>{renderMapLink((report.game || selectedGame) as any, m.mapName)}</td>
+                      <td style={{ padding: '12px 8px' }}>{m.matchesPlayed}</td>
+                      <td style={{ padding: '12px 8px', color: m.winRate >= 0.5 ? '#28a745' : '#dc3545', fontWeight: 'bold' }}>
+                        {Math.round(m.winRate * 100)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+
           <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>📊 Key Tendencies</h3>
+            <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>{isMatchup ? '📊 Opponent Tendencies' : '📊 Key Tendencies'}</h3>
             <div style={{ margin: '15px 0' }}>
               <strong>Playstyle Aggression:</strong>
               <span
@@ -870,7 +1132,7 @@ function App() {
 
           {/* 2.5 Comps & Draft */}
           <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-            <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🧠 Comps & Draft</h3>
+            <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>{isMatchup ? '🧠 Opponent: Comps & Draft' : '🧠 Comps & Draft'}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
               <div>
                 <h4 style={{ margin: '0 0 10px 0', color: '#333' }}>Top Picks / Bans</h4>
@@ -925,7 +1187,7 @@ function App() {
           {/* 2.75 Default Map Plan (VAL) */}
           {report.game === 'VALORANT' && (
             <section style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-              <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>🗺️ Default Map Plan (VAL)</h3>
+              <h3 style={{ marginTop: 0, color: '#333', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>{isMatchup ? '🗺️ Opponent: Default Map Plan (VAL)' : '🗺️ Default Map Plan (VAL)'}</h3>
               <p style={{ marginTop: 0, color: '#666', fontSize: '0.9rem' }}>
                 Note: Site-level tendencies (A/B hits, first-contact timing, retakes) require round-by-round data. The current feed used for this demo
                 does not include that for all matches, so this section shows map-level performance and common agent comps per map.
@@ -1086,7 +1348,9 @@ function App() {
 
             {/* 4. How to Win (Highlighted) */}
             <section style={{ backgroundColor: '#007bff', color: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-              <h3 style={{ marginTop: 0, borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '10px' }}>🎯 How to Win</h3>
+              <h3 style={{ marginTop: 0, borderBottom: '1px solid rgba(255,255,255,0.3)', paddingBottom: '10px' }}>
+                {isMatchup ? `🎯 How to Win (as ${report.ourTeamName} vs ${report.opponentName})` : '🎯 How to Win'}
+              </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '15px' }}>
                 {report.howToWin.map((tip, i) => (
                   <div key={i} style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: '15px', borderRadius: '6px' }}>
@@ -1100,7 +1364,92 @@ function App() {
             </section>
           </div>
 
-          {report.howToWinEngine && report.howToWinEngine.candidates && report.howToWinEngine.candidates.length > 0 && (
+          {isMatchup && report.matchup?.howToWinTransparency && (
+            <section style={{ backgroundColor: '#007bff', color: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', marginTop: '20px' }}>
+              <details style={{
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.18)',
+                borderRadius: '10px',
+                padding: '12px 12px'
+              }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 800 }}>How these matchup tips were generated</summary>
+
+                <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>
+                  <strong>Mode:</strong> {report.matchup.howToWinTransparency.kind}
+                </div>
+
+                <div style={{ marginTop: '8px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>
+                  <strong>Based on:</strong>{' '}
+                  our {report.matchup.howToWinTransparency.basedOn.ourMatchesAnalyzed} matches • opponent {report.matchup.howToWinTransparency.basedOn.opponentMatchesAnalyzed} matches • {report.matchup.howToWinTransparency.basedOn.sharedMaps} shared map(s)
+                </div>
+
+                {report.matchup.howToWinTransparency.notes && report.matchup.howToWinTransparency.notes.length > 0 && (
+                  <ul style={{ marginTop: '10px', paddingLeft: '18px', color: 'rgba(255,255,255,0.9)', fontSize: '0.85rem' }}>
+                    {report.matchup.howToWinTransparency.notes.map((n, idx) => (
+                      <li key={idx} style={{ marginBottom: '6px' }}>{n}</li>
+                    ))}
+                  </ul>
+                )}
+              </details>
+            </section>
+          )}
+
+          {isMatchup && report.matchup?.opponentHowToWinEngine && report.matchup.opponentHowToWinEngine.candidates && report.matchup.opponentHowToWinEngine.candidates.length > 0 && (
+            <section style={{ backgroundColor: '#007bff', color: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', marginTop: '20px' }}>
+              <details style={{
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                border: '1px solid rgba(255,255,255,0.18)',
+                borderRadius: '10px',
+                padding: '12px 12px'
+              }}>
+                <summary style={{ cursor: 'pointer', fontWeight: 800 }}>Opponent-only engine scoring (for transparency)</summary>
+
+                <div style={{ marginTop: '10px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>
+                  <strong>Formula:</strong> {report.matchup.opponentHowToWinEngine.formula}
+                </div>
+
+                <div style={{ marginTop: '6px', fontSize: '0.82rem', color: 'rgba(255,255,255,0.8)', fontStyle: 'italic' }}>
+                  Note: in matchup mode, the selected tips above are matchup-specific heuristics. This table shows the opponent-only engine candidates.
+                </div>
+
+                <div style={{ overflowX: 'auto', marginTop: '10px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.22)' }}>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Status</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Rule</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Impact</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>W</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>E</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Conf</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Candidate</th>
+                        <th style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.75)' }}>Why not picked</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.matchup.opponentHowToWinEngine.candidates.slice(0, 12).map((c) => (
+                        <tr key={c.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
+                          <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{c.status}</td>
+                          <td style={{ padding: '8px 6px', whiteSpace: 'nowrap' }}>{c.rule}</td>
+                          <td style={{ padding: '8px 6px', fontWeight: 800 }}>{c.breakdown.impact}</td>
+                          <td style={{ padding: '8px 6px' }}>{Math.round(c.breakdown.weaknessSeverity * 100)}%</td>
+                          <td style={{ padding: '8px 6px' }}>{Math.round(c.breakdown.exploitability * 100)}%</td>
+                          <td style={{ padding: '8px 6px' }}>{c.breakdown.confidence}</td>
+                          <td style={{ padding: '8px 6px', minWidth: 220 }}>
+                            <div style={{ fontWeight: 700 }}>{c.insight}</div>
+                            <div style={{ marginTop: '2px', color: 'rgba(255,255,255,0.75)', fontStyle: 'italic' }}>{c.evidence}</div>
+                          </td>
+                          <td style={{ padding: '8px 6px', color: 'rgba(255,255,255,0.8)' }}>{c.whyNotSelected || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            </section>
+          )}
+
+          {!isMatchup && report.howToWinEngine && report.howToWinEngine.candidates && report.howToWinEngine.candidates.length > 0 && (
             <section style={{ backgroundColor: '#007bff', color: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', marginTop: '20px' }}>
               <details style={{
                 backgroundColor: 'rgba(255,255,255,0.08)',
@@ -1151,7 +1500,8 @@ function App() {
             </section>
           )}
         </div>
-      ) : null}
+        );
+      })() : null}
 
       <footer style={{ marginTop: '50px', textAlign: 'center', fontSize: '0.8rem', color: '#999' }}>
         {health && <span>API Status: {health.status}</span>}

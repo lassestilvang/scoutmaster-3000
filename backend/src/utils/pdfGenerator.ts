@@ -82,6 +82,10 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
       : label;
   };
 
+  const isMatchup = !!report.matchup && !!report.ourTeamName;
+  const our = report.matchup?.our;
+  const opponent = report.matchup?.opponent;
+
   const evidence = report.evidence;
   const evidenceStart = fmtDate(evidence?.startTime);
   const evidenceEnd = fmtDate(evidence?.endTime);
@@ -92,6 +96,18 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
   const evidenceTrend = evidence?.winRateTrend;
   const evidenceTrendText = evidenceTrend
     ? `${evidenceTrend.direction === 'Up' ? '↑' : evidenceTrend.direction === 'Down' ? '↓' : '→'} ${evidenceTrend.direction} (${evidenceTrend.deltaPctPoints >= 0 ? '+' : ''}${evidenceTrend.deltaPctPoints}pp) — last ${evidenceTrend.recentMatches} vs previous ${evidenceTrend.previousMatches}`
+    : '—';
+
+  const ourEvidence = our?.evidence;
+  const ourEvidenceStart = fmtDate(ourEvidence?.startTime);
+  const ourEvidenceEnd = fmtDate(ourEvidence?.endTime);
+  const ourEvidenceSeries = (ourEvidence?.seriesIds || []).join(', ') || '—';
+  const ourEvidenceSample = ourEvidence
+    ? `${ourEvidence.matchesAnalyzed} matches • ${ourEvidence.mapsPlayed} maps • ${ourEvidence.seriesIds.length} series`
+    : '—';
+  const ourEvidenceTrend = ourEvidence?.winRateTrend;
+  const ourEvidenceTrendText = ourEvidenceTrend
+    ? `${ourEvidenceTrend.direction === 'Up' ? '↑' : ourEvidenceTrend.direction === 'Down' ? '↓' : '→'} ${ourEvidenceTrend.direction} (${ourEvidenceTrend.deltaPctPoints >= 0 ? '+' : ''}${ourEvidenceTrend.deltaPctPoints}pp) — last ${ourEvidenceTrend.recentMatches} vs previous ${ourEvidenceTrend.previousMatches}`
     : '—';
 
   const dataSources = report.dataSources || [];
@@ -302,34 +318,138 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
       ` : ''}
 
       <section>
-        <h2>${report.ourTeamName ? 'Matchup Snapshot' : 'Team Snapshot'}</h2>
+        <h2>${isMatchup ? 'Matchup Snapshot' : 'Team Snapshot'}</h2>
+
+        ${isMatchup ? `
+          <div style="margin-top: -8px; margin-bottom: 14px; color: #666; font-size: 0.85rem;">
+            This report includes both teams’ recent snapshots and a small set of matchup deltas. Sections that use opponent-only data are labeled.
+          </div>
+        ` : ''}
+
         <div class="snapshot-grid">
-          <div class="stat-card">
-            <div class="stat-label">${report.ourTeamName ? 'Opponent Win Rate' : 'Win Probability'}</div>
-            <div class="stat-value" style="color: ${report.winProbability > 50 ? '#28a745' : '#dc3545'}">${report.winProbability}%</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">${report.ourTeamName ? 'Opponent Avg. Score' : 'Avg. Score'}</div>
-            <div class="stat-value">${report.avgScore}</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-label">Matches Analyzed</div>
-            <div class="stat-value">${report.matchesAnalyzed}</div>
-          </div>
+          ${isMatchup ? `
+            <div class="stat-card">
+              <div class="stat-label">Our Win Rate</div>
+              <div class="stat-value" style="color: ${(our?.winRate ?? 0) > 50 ? '#28a745' : '#dc3545'}">${our?.winRate ?? '—'}%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Opponent Win Rate</div>
+              <div class="stat-value" style="color: ${(opponent?.winRate ?? 0) > 50 ? '#28a745' : '#dc3545'}">${opponent?.winRate ?? '—'}%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Our Avg. Score</div>
+              <div class="stat-value">${our?.avgScore ?? '—'}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Opponent Avg. Score</div>
+              <div class="stat-value">${opponent?.avgScore ?? '—'}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Our Matches Analyzed</div>
+              <div class="stat-value">${our?.matchesAnalyzed ?? '—'}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Opponent Matches Analyzed</div>
+              <div class="stat-value">${opponent?.matchesAnalyzed ?? '—'}</div>
+            </div>
+          ` : `
+            <div class="stat-card">
+              <div class="stat-label">Win Probability</div>
+              <div class="stat-value" style="color: ${report.winProbability > 50 ? '#28a745' : '#dc3545'}">${report.winProbability}%</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Avg. Score</div>
+              <div class="stat-value">${report.avgScore}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Matches Analyzed</div>
+              <div class="stat-value">${report.matchesAnalyzed}</div>
+            </div>
+          `}
         </div>
       </section>
 
+      ${isMatchup && report.matchup ? `
+        <section>
+          <h3>🔎 Matchup Differences</h3>
+          <p style="margin: 0; color: #666; font-size: 0.85rem;">
+            These deltas are computed from recent map results and coarse tempo proxies.
+          </p>
+
+          <h4 style="margin: 14px 0 8px 0;">Map pool deltas (shared maps)</h4>
+          ${report.matchup.deltas.mapPool && report.matchup.deltas.mapPool.length > 0 ? `
+            <table>
+              <thead>
+                <tr>
+                  <th>Map</th>
+                  <th>Our WR</th>
+                  <th>Opp WR</th>
+                  <th>Δ (pp)</th>
+                  <th>Min sample</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${report.matchup.deltas.mapPool.map(d => `
+                  <tr>
+                    <td style="font-weight: bold;">${renderMapHtml(d.mapName)}</td>
+                    <td>${Math.round(d.our.winRate * 100)}% (${d.our.matchesPlayed})</td>
+                    <td>${Math.round(d.opponent.winRate * 100)}% (${d.opponent.matchesPlayed})</td>
+                    <td style="font-weight: 700; color: ${d.deltaWinRate >= 0 ? '#28a745' : '#dc3545'};">${d.deltaWinRate >= 0 ? '+' : ''}${Math.round(d.deltaWinRate * 100)}pp</td>
+                    <td>${d.minSample}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          ` : `
+            <div style="margin-top: 8px; color: #666; font-style: italic;">No shared-map deltas available in the current window.</div>
+          `}
+
+          <h4 style="margin: 14px 0 8px 0;">Tempo (aggression proxy)</h4>
+          <div style="color: #666;">${escapeHtml(report.matchup.deltas.aggression.note || '—')}</div>
+        </section>
+      ` : ''}
+
       <section>
         <h3>🧾 Evidence &amp; Sources</h3>
-        <p style="margin: 0;"><strong>Time window:</strong> <span style="color: #666;">${evidenceStart} → ${evidenceEnd}</span></p>
-        <p style="margin: 6px 0 0 0;"><strong>Sample:</strong> <span style="color: #666;">${evidenceSample}</span></p>
-        <p style="margin: 6px 0 0 0;"><strong>Win-rate confidence:</strong> <span style="color: #666;">${evidence?.winRateConfidence ?? '—'}</span></p>
-        <p style="margin: 6px 0 0 0;"><strong>Trend:</strong> <span style="color: #666;">${evidenceTrendText}</span></p>
+        ${isMatchup ? `
+          <div class="grid-2col" style="margin-top: 10px;">
+            <div>
+              <h4 style="margin: 0 0 8px 0;">Our evidence window</h4>
+              <p style="margin: 0;"><strong>Time window:</strong> <span style="color: #666;">${ourEvidenceStart} → ${ourEvidenceEnd}</span></p>
+              <p style="margin: 6px 0 0 0;"><strong>Sample:</strong> <span style="color: #666;">${ourEvidenceSample}</span></p>
+              <p style="margin: 6px 0 0 0;"><strong>Win-rate confidence:</strong> <span style="color: #666;">${ourEvidence?.winRateConfidence ?? '—'}</span></p>
+              <p style="margin: 6px 0 0 0;"><strong>Trend:</strong> <span style="color: #666;">${ourEvidenceTrendText}</span></p>
+              <h4 style="margin: 14px 0 6px 0;">Series IDs used</h4>
+              <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.78rem; color: #333; background: #f8f9fa; border: 1px solid #eee; border-radius: 8px; padding: 10px;">
+                ${ourEvidenceSeries}
+              </div>
+            </div>
+            <div>
+              <h4 style="margin: 0 0 8px 0;">Opponent evidence window</h4>
+              <p style="margin: 0;"><strong>Time window:</strong> <span style="color: #666;">${evidenceStart} → ${evidenceEnd}</span></p>
+              <p style="margin: 6px 0 0 0;"><strong>Sample:</strong> <span style="color: #666;">${evidenceSample}</span></p>
+              <p style="margin: 6px 0 0 0;"><strong>Win-rate confidence:</strong> <span style="color: #666;">${evidence?.winRateConfidence ?? '—'}</span></p>
+              <p style="margin: 6px 0 0 0;"><strong>Trend:</strong> <span style="color: #666;">${evidenceTrendText}</span></p>
+              <h4 style="margin: 14px 0 6px 0;">Series IDs used</h4>
+              <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.78rem; color: #333; background: #f8f9fa; border: 1px solid #eee; border-radius: 8px; padding: 10px;">
+                ${evidenceSeries}
+              </div>
+            </div>
+          </div>
+          <div style="margin-top: 12px; color: #666; font-size: 0.8rem; font-style: italic;">
+            Note: normalized raw inputs shown below are opponent-scoped.
+          </div>
+        ` : `
+          <p style="margin: 0;"><strong>Time window:</strong> <span style="color: #666;">${evidenceStart} → ${evidenceEnd}</span></p>
+          <p style="margin: 6px 0 0 0;"><strong>Sample:</strong> <span style="color: #666;">${evidenceSample}</span></p>
+          <p style="margin: 6px 0 0 0;"><strong>Win-rate confidence:</strong> <span style="color: #666;">${evidence?.winRateConfidence ?? '—'}</span></p>
+          <p style="margin: 6px 0 0 0;"><strong>Trend:</strong> <span style="color: #666;">${evidenceTrendText}</span></p>
 
-        <h4 style="margin: 14px 0 6px 0;">Series IDs used</h4>
-        <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.8rem; color: #333; background: #f8f9fa; border: 1px solid #eee; border-radius: 8px; padding: 10px;">
-          ${evidenceSeries}
-        </div>
+          <h4 style="margin: 14px 0 6px 0;">Series IDs used</h4>
+          <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 0.8rem; color: #333; background: #f8f9fa; border: 1px solid #eee; border-radius: 8px; padding: 10px;">
+            ${evidenceSeries}
+          </div>
+        `}
 
         <h4 style="margin: 14px 0 6px 0;">Data sources</h4>
         ${dataSourcesHtml}
@@ -338,8 +458,44 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
         ${rawInputsHtml}
       </section>
 
+      ${isMatchup && our ? `
+        <section>
+          <h3>📊 Our Tendencies</h3>
+          <p>
+            <strong>Playstyle Aggression:</strong>
+            <span class="aggression-badge" style="
+              background-color: ${our.aggression === 'High' ? '#f8d7da' : our.aggression === 'Medium' ? '#fff3cd' : '#d4edda'};
+              color: ${our.aggression === 'High' ? '#721c24' : our.aggression === 'Medium' ? '#856404' : '#155724'};
+            ">${our.aggression}</span>
+          </p>
+          <div style="margin-top: -6px; font-size: 0.8rem; color: #666;">
+            Definition: Aggression is a coarse proxy derived from average score per match (higher scoring tends to correlate with higher pace/volatility).
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Map Name</th>
+                <th>Played</th>
+                <th>Win Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${our.topMaps.map(m => `
+                <tr>
+                  <td style="font-weight: bold;">${renderMapHtml(m.mapName)}</td>
+                  <td>${m.matchesPlayed}</td>
+                  <td style="color: ${m.winRate >= 0.5 ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                    ${Math.round(m.winRate * 100)}%
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </section>
+      ` : ''}
+
       <section>
-        <h3>📊 Key Tendencies</h3>
+        <h3>${isMatchup ? '📊 Opponent Tendencies' : '📊 Key Tendencies'}</h3>
         <p>
           <strong>Playstyle Aggression:</strong>
           <span class="aggression-badge" style="
@@ -373,7 +529,7 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
       </section>
 
       <section>
-        <h3>🧠 Comps & Draft</h3>
+        <h3>${isMatchup ? '🧠 Opponent: Comps & Draft' : '🧠 Comps & Draft'}</h3>
         <div class="grid-2col">
           <div>
             <h4 style="margin: 0 0 10px 0;">Top Picks / Bans</h4>
@@ -543,7 +699,64 @@ export async function generatePdf(report: ScoutingReport): Promise<Uint8Array> {
         </section>
       </div>
 
-      ${report.howToWinEngine && report.howToWinEngine.candidates && report.howToWinEngine.candidates.length > 0 ? `
+      ${isMatchup && report.matchup?.howToWinTransparency ? `
+        <section>
+          <h3>🧮 How matchup tips were generated</h3>
+          <p style="margin: 0; color: #666; font-size: 0.85rem;"><strong>Mode:</strong> ${report.matchup.howToWinTransparency.kind}</p>
+          <p style="margin: 6px 0 0 0; color: #666; font-size: 0.85rem;">
+            <strong>Based on:</strong>
+            our ${report.matchup.howToWinTransparency.basedOn.ourMatchesAnalyzed} matches,
+            opponent ${report.matchup.howToWinTransparency.basedOn.opponentMatchesAnalyzed} matches,
+            ${report.matchup.howToWinTransparency.basedOn.sharedMaps} shared map(s)
+          </p>
+          <ul style="margin: 10px 0 0 18px; color: #333;">
+            ${report.matchup.howToWinTransparency.notes.map(n => `<li style=\"margin-bottom: 6px;\">${escapeHtml(n)}</li>`).join('')}
+          </ul>
+        </section>
+      ` : ''}
+
+      ${isMatchup && report.matchup?.opponentHowToWinEngine && report.matchup.opponentHowToWinEngine.candidates && report.matchup.opponentHowToWinEngine.candidates.length > 0 ? `
+        <section>
+          <h3>🧮 Opponent-only engine scoring (for transparency)</h3>
+          <p style="margin: 0; font-size: 0.85rem; color: #666;"><strong>Formula:</strong> ${report.matchup.opponentHowToWinEngine.formula}</p>
+          <p style="margin: 6px 0 0 0; font-size: 0.8rem; color: #666; font-style: italic;">
+            Note: in matchup mode, the selected tips are matchup-specific heuristics; this table shows the opponent-only engine candidates.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Rule</th>
+                <th>Impact</th>
+                <th>W</th>
+                <th>E</th>
+                <th>Conf</th>
+                <th>Candidate</th>
+                <th>Why not picked</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${report.matchup.opponentHowToWinEngine.candidates.slice(0, 12).map(c => `
+                <tr>
+                  <td>${c.status}</td>
+                  <td>${c.rule}</td>
+                  <td style="font-weight: bold;">${c.breakdown.impact}</td>
+                  <td>${Math.round(c.breakdown.weaknessSeverity * 100)}%</td>
+                  <td>${Math.round(c.breakdown.exploitability * 100)}%</td>
+                  <td>${c.breakdown.confidence}</td>
+                  <td>
+                    <div style="font-weight: 700;">${c.insight}</div>
+                    <div style="margin-top: 2px; color: #666; font-size: 0.8rem; font-style: italic;">${c.evidence}</div>
+                  </td>
+                  <td style="color: #666; font-size: 0.8rem;">${c.whyNotSelected || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </section>
+      ` : ''}
+
+      ${!isMatchup && report.howToWinEngine && report.howToWinEngine.candidates && report.howToWinEngine.candidates.length > 0 ? `
         <section>
           <h3>🧮 How the “How to Win” engine scored candidates</h3>
           <p style="margin: 0; font-size: 0.85rem; color: #666;"><strong>Formula:</strong> ${report.howToWinEngine.formula}</p>
